@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Flame } from 'lucide-react';
 
+// 1. Определяем типы для props и статистики
+interface HomeProps {
+  userData: {
+    name: string;
+  } | null;
+}
+
 interface Stats {
   currentStreak: number;
   longestStreak: number;
@@ -16,7 +23,8 @@ interface Task {
   completedToday: boolean;
 }
 
-export function Home() {
+// 2. Указываем, что компонент принимает props
+export function Home({ userData }: HomeProps) {
   const [stats, setStats] = useState<Stats>({
     currentStreak: 0,
     longestStreak: 0,
@@ -26,6 +34,7 @@ export function Home() {
 
   useEffect(() => {
     const updateData = () => {
+      // В будущем эти данные должны приходить с бэкенда
       const savedStats = localStorage.getItem('taskStats');
       if (savedStats) {
         setStats(JSON.parse(savedStats));
@@ -54,6 +63,9 @@ export function Home() {
 
   return (
     <div className="min-h-screen flex flex-col items-center pt-16 px-4">
+      {/* Можно добавить персонализированное приветствие */}
+      {userData && <h1 className="text-2xl mb-4">Привет, {userData.name}!</h1>}
+
       {/* Streak Display */}
       <div className="flex flex-col items-center mb-8">
         <Flame className="w-48 h-48 text-orange-500 fill-orange-500" />

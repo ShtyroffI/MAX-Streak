@@ -1,13 +1,24 @@
 import { useEffect, useState } from 'react';
 import { Flame, Trophy, Target } from 'lucide-react';
 
+// 1. Определяем тип для входящих данных (props)
+interface ProfileProps {
+  userData: {
+    id: string;
+    name: string;
+    avatar: string;
+  } | null;
+}
+
+// Определяем тип для статистики
 interface Stats {
   currentStreak: number;
   longestStreak: number;
   totalCompleted: number;
 }
 
-export function Profile() {
+// 2. Указываем, что компонент принимает props
+export function Profile({ userData }: ProfileProps) {
   const [stats, setStats] = useState<Stats>({
     currentStreak: 0,
     longestStreak: 0,
@@ -15,25 +26,34 @@ export function Profile() {
   });
 
   useEffect(() => {
+    // В будущем эту статистику также стоит запрашивать с бэкенда
     const savedStats = localStorage.getItem('taskStats');
     if (savedStats) {
       setStats(JSON.parse(savedStats));
     }
   }, []);
 
+  // 3. Добавляем проверку на случай, если данные еще не загрузились
+  if (!userData) {
+    return (
+      <div className="pt-16 text-center text-zinc-400">Загрузка профиля...</div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center pt-16 px-4">
       {/* Avatar */}
       <div className="w-32 h-32 rounded-full overflow-hidden bg-zinc-800 mb-4">
+        {/* 4. Используем реальные данные */}
         <img
-          src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop"
+          src={userData.avatar}
           alt="Avatar"
           className="w-full h-full object-cover"
         />
       </div>
 
       {/* Name */}
-      <h1 className="mb-8">Пользователь</h1>
+      <h1 className="text-2xl font-medium mb-8">{userData.name}</h1>
 
       {/* Stats Cards */}
       <div className="w-full max-w-md space-y-3">

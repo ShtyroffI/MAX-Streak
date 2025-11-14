@@ -3,45 +3,103 @@ import { Plus } from 'lucide-react';
 import { TaskItem } from './TaskItem';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
+// Импортируем наш новый "умный" API сервис
+import api from '../services/api';
 
+// Тип для задачи, который используется в этом компоненте.
+// Он расширяет тип с бэкенда, добавляя поля для управления состоянием UI.
 export interface Task {
-  id: string;
+  id: number;
   text: string;
-  timeSpent: number; // seconds
-  goal: number; // seconds (default 30 min = 1800)
+  goal: number; // seconds
+  streak: number;
+  longest_streak: number;
+  completed_today: boolean;
+
+  // Поля, которые используются только на фронтенде для UI
+  timeSpent: number;
   isRunning: boolean;
   startTime?: number;
-  completedToday: boolean;
-  lastCompletedDate?: string;
-  createdAt: string;
 }
 
-export function Tasks() {
+// Определяем тип для props, которые приходят из App.tsx
+interface TasksProps {
+  authToken: string | null;
+}
+
+export function Tasks({ authToken }: TasksProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskText, setNewTaskText] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const savedTasks = localStorage.getItem('tasks');
-    if (savedTasks) {
-      const loadedTasks = JSON.parse(savedTasks);
-      // Reset daily progress if it's a new day
-      const today = new Date().toDateString();
-      const resetTasks = loadedTasks.map((task: Task) => {
-        if (task.lastCompletedDate !== today) {
-          return { ...task, timeSpent: 0, completedToday: false, isRunning: false };
-        }
-        return { ...task, isRunning: false };
-      });
-      setTasks(resetTasks);
+  // --- Функции для работы с API ---
+
+  const fetchTasks = async () => {
+    if (!authToken) {
+      setIsLoading(false);
+      return;
     }
-  }, []);
+    try {
+      setIsLoading(true);
+      // Вызываем функцию из нашего api-сервиса
+      const dataFromApi = await api.getTasks(authToken);
+      // Обогащаем данные с бэкенда локальными полями для управления UI
+      const enrichedTasks = dataFromApi.map((task: any) => ({
+        ...task,
+        timeSpent: 0, // Время работы таймера сегодня (локально)
+        isRunning: false,
+      }));
+      setTasks(enrichedTasks);
+    } catch (error) {
+      console.error("Failed to fetch tasks:", error);
+      // Можно добавить обработку ошибок для пользователя, например, показать сообщение
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  const addTask = async () => {
+    if (!newTaskText.trim() || !authToken) return;
+    try {
+      await api.addTask(newTaskText, 1800, authToken); // 1800 сек = 30 мин по умолчанию
+      setNewTaskText('');
+      fetchTasks(); // Перезагружаем список задач, чтобы увидеть новую
+    } catch (error) {
+      console.error("Failed to add task:", error);
+    }
+  };
+
+  const deleteTask = async (id: number) => {
+    if (!authToken) return;
+    try {
+      await api.deleteTask(id, authToken);
+      fetchTasks(); // Перезагружаем список, чтобы задача исчезла
+    } catch (error) {
+      console.error("Failed to delete task:", error);
+    }
+  };
+
+  const syncProgress = async (id: number, timeSpent: number) => {
+    if (!authToken) return;
+    try {
+      // Отправляем накопленное время на бэкенд для обновления стрика
+      await api.syncTask(id, Math.floor(timeSpent), authToken);
+      // Можно обновить данные для одной задачи, чтобы UI был отзывчивее,
+      // но для хакатона полный перезапрос - это просто и надежно.
+      fetchTasks();
+    } catch (error) {
+      console.error("Failed to sync task progress:", error);
+    }
+  };
+
+  // --- Логика UI и локального состояния ---
+
+  // Загружаем задачи, как только появляется токен авторизации
   useEffect(() => {
-    localStorage.setItem('tasks', JSON.stringify(tasks));
-    updateStats();
-  }, [tasks]);
+    fetchTasks();
+  }, [authToken]);
 
-  // Update timers every second
+  // Этот useEffect отвечает за работу локальных таймеров в UI
   useEffect(() => {
     const interval = setInterval(() => {
       setTasks(prevTasks =>
@@ -49,156 +107,91 @@ export function Tasks() {
           if (task.isRunning && task.startTime) {
             const now = Date.now();
             const elapsed = Math.floor((now - task.startTime) / 1000);
-            const newTimeSpent = task.timeSpent + elapsed;
-            const completedToday = newTimeSpent >= task.goal;
-            
             return {
               ...task,
-              timeSpent: newTimeSpent,
+              timeSpent: task.timeSpent + elapsed,
               startTime: now,
-              completedToday,
-              lastCompletedDate: completedToday ? new Date().toDateString() : task.lastCompletedDate,
             };
           }
           return task;
         })
       );
     }, 1000);
-
     return () => clearInterval(interval);
   }, []);
 
-  const updateStats = () => {
-    const today = new Date().toDateString();
-    const completedToday = tasks.some(task => task.completedToday);
+  const toggleTimer = (id: number) => {
+    const taskToToggle = tasks.find(t => t.id === id);
+    if (!taskToToggle) return;
 
-    const stats = JSON.parse(
-      localStorage.getItem('taskStats') || 
-      '{"currentStreak":0,"longestStreak":0,"totalCompleted":0,"lastActiveDate":""}'
-    );
+    const isStopping = taskToToggle.isRunning;
 
-    const totalCompleted = tasks.filter(t => t.completedToday).length;
-
-    // Update streak
-    if (completedToday) {
-      if (stats.lastActiveDate !== today) {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = yesterday.toDateString();
-
-        if (stats.lastActiveDate === yesterdayStr || stats.currentStreak === 0) {
-          stats.currentStreak += 1;
-        } else {
-          stats.currentStreak = 1;
-        }
-        stats.lastActiveDate = today;
-      }
-    }
-
-    stats.totalCompleted = totalCompleted;
-    if (stats.currentStreak > stats.longestStreak) {
-      stats.longestStreak = stats.currentStreak;
-    }
-
-    localStorage.setItem('taskStats', JSON.stringify(stats));
-  };
-
-  const addTask = () => {
-    if (!newTaskText.trim()) return;
-
-    const newTask: Task = {
-      id: Date.now().toString(),
-      text: newTaskText,
-      timeSpent: 0,
-      goal: 1800, // 30 minutes default
-      isRunning: false,
-      completedToday: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    setTasks([...tasks, newTask]);
-    setNewTaskText('');
-  };
-
-  const toggleTimer = (id: string) => {
     setTasks(
-      tasks.map((task) => {
-        if (task.id === id) {
-          return {
-            ...task,
-            isRunning: !task.isRunning,
-            startTime: !task.isRunning ? Date.now() : undefined,
-          };
-        }
-        return task;
-      })
+      tasks.map((task) =>
+        task.id === id
+          ? { ...task, isRunning: !task.isRunning, startTime: !isStopping ? Date.now() : undefined }
+          : task
+      )
     );
+
+    // Если таймер был остановлен, отправляем накопленное время на сервер
+    if (isStopping) {
+      syncProgress(id, taskToToggle.timeSpent);
+    }
   };
 
-  const updateGoal = (id: string, minutes: number) => {
-    setTasks(
-      tasks.map((task) => {
-        if (task.id === id) {
-          return {
-            ...task,
-            goal: minutes * 60,
-          };
-        }
-        return task;
-      })
-    );
-  };
-
-  const deleteTask = (id: string) => {
-    setTasks(tasks.filter((task) => task.id !== id));
+  const updateGoal = (id: number, minutes: number) => {
+    // Эта логика требует отдельного эндпоинта на бэкенде
+    console.log(`Updating goal for task ${id} to ${minutes} minutes. API endpoint needed.`);
+    // Пример вызова: await api.updateTaskGoal(id, minutes, authToken);
   };
 
   const totalTimeToday = tasks.reduce((sum, task) => sum + task.timeSpent, 0);
 
+  // --- Рендеринг компонента ---
+
+  if (isLoading) {
+    return <div className="pt-16 text-center text-zinc-400">Загрузка задач...</div>;
+  }
+
   return (
     <div className="min-h-screen px-4 pt-6">
-      <h1 className="mb-2">Мои задачи</h1>
-      
-      {/* Total Time Today */}
+      <h1 className="text-xl font-medium mb-2">Мои задачи</h1>
+
       <div className="mb-6 bg-zinc-900 rounded-lg p-4">
-        <p className="text-zinc-400 text-sm">Всего за сегодня</p>
+        <p className="text-zinc-400 text-sm">Всего в фокусе сегодня</p>
         <p className="text-2xl text-orange-500">
           {Math.floor(totalTimeToday / 3600)}ч {Math.floor((totalTimeToday % 3600) / 60)}м
         </p>
       </div>
 
-      {/* Add Task Form */}
       <div className="mb-6 flex gap-2">
         <Input
           value={newTaskText}
           onChange={(e) => setNewTaskText(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && addTask()}
-          placeholder="Добавить новую задачу..."
+          placeholder="Читать статью, работать над кодом..."
           className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-500"
         />
-        <Button
-          onClick={addTask}
-          className="bg-orange-500 hover:bg-orange-600 text-white"
-        >
+        <Button onClick={addTask} className="bg-orange-500 hover:bg-orange-600 text-white">
           <Plus className="w-5 h-5" />
         </Button>
       </div>
 
-      {/* Tasks List */}
       <div className="space-y-3">
         {tasks.length === 0 ? (
           <div className="text-center py-12 text-zinc-500">
-            <p>Нет задач</p>
-            <p className="text-sm">Добавьте свою первую задачу!</p>
+            <p>Задач пока нет</p>
+            <p className="text-sm">Начните свой первый стрик!</p>
           </div>
         ) : (
           tasks.map((task) => (
             <TaskItem
               key={task.id}
               task={task}
-              onToggleTimer={toggleTimer}
-              onUpdateGoal={updateGoal}
-              onDelete={deleteTask}
+              onToggleTimer={() => toggleTimer(task.id)}
+              onUpdateGoal={(id, minutes) => updateGoal(Number(id), minutes)}
+              onDelete={() => deleteTask(task.id)}
             />
           ))
         )}
