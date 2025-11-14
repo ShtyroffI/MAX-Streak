@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Profile } from './components/Profile';
-import { Tasks, Task } from './components/Tasks'; // Импортируем Task
+import { Tasks, Task } from './components/Tasks';
 import { Home } from './components/Home';
 import { Home as HomeIcon, ListTodo, User } from 'lucide-react';
-import api from './services/api'; // Импортируем наш умный API
+import api from './services/api';
 
+// Объявляем правильный глобальный объект
 declare global {
-  interface Window { maxBridge: any; }
+  interface Window { WebApp: any; }
 }
 
 interface UserData {
@@ -19,31 +20,34 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<'home' | 'profile' | 'tasks'>('home');
   const [userData, setUserData] = useState<UserData | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [authToken, setAuthToken] = useState<string | null>(null); // Может понадобиться для реального API
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // --- Основная логика приложения теперь здесь ---
 
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        let initDataString = "mock"; // По умолчанию для заглушки
+        let initDataString: string;
 
-        if (window.maxBridge) {
-          await window.maxBridge.init();
-          initDataString = await window.maxBridge.getLaunchParams();
+        // Проверяем наличие WebApp и initData
+        if (window.WebApp && window.WebApp.initData) {
+          console.log("WebApp found, using initData.");
+          initDataString = window.WebApp.initData;
         } else {
-          console.warn("MAX Bridge not found. Using mock data.");
+          console.warn("WebApp.initData not found. Using mock data for browser mode.");
+          // Для разработки в браузере используем заглушку
+          initDataString = "mock_for_browser_dev";
         }
 
-        // Единственный запрос при старте
-        const { user, tasks: fetchedTasks } = await api.authenticateAndGetData(initDataString);
+        // Единственный запрос при старте для аутентификации и получения данных
+        const response = await api.authenticateAndGetData(initDataString);
 
-        setUserData(user);
-        setTasks(fetchedTasks);
-        // В реальном API здесь может вернуться токен, который нужно сохранить
-        // setAuthToken(user.token); 
+        setUserData(response.user);
+        setTasks(response.tasks);
+        setAuthToken(response.auth_token); // Сохраняем JWT токен от нашего бэкенда
+
+        // Сообщаем клиенту MAX, что приложение готово к отображению
+        window.WebApp?.ready();
 
       } catch (err) {
         console.error("Initialization error:", err);
@@ -52,15 +56,19 @@ export default function App() {
         setIsLoading(false);
       }
     };
+
     initializeApp();
-  }, []);
+  }, []); // Пустой массив зависимостей = выполнить один раз при старте
+
+  // Остальная часть компонента остается без изменений, так как архитектура уже правильная
+  // (локальные таймеры, функции-обработчики и т.д.)
 
   // Локальная логика таймеров
   useEffect(() => {
     const interval = setInterval(() => {
       setTasks(prevTasks =>
         prevTasks.map(task =>
-          task.isRunning && task.startTime
+          task.isRunning
             ? { ...task, timeSpent: task.timeSpent + 1 }
             : task
         )
@@ -69,17 +77,18 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // --- Функции-обработчики, которые передаются дочерним компонентам ---
-
+  // --- Функции-обработчики ---
   const handleAddTask = async (text: string) => {
-    await api.addTask(text, 1800, authToken!); // `!` означает, что мы уверены, что токен есть
-    const updatedTasks = await api.getTasks(authToken!); // Перезапрашиваем данные
+    if (!authToken) return;
+    await api.addTask(text, 1800, authToken);
+    const updatedTasks = await api.getTasks(authToken);
     setTasks(updatedTasks);
   };
 
   const handleDeleteTask = async (id: number) => {
-    await api.deleteTask(id, authToken!);
-    setTasks(tasks.filter(t => t.id !== id)); // Оптимистичное обновление
+    if (!authToken) return;
+    await api.deleteTask(id, authToken);
+    setTasks(tasks.filter(t => t.id !== id));
   };
 
   const handleToggleTimer = (id: number) => {
@@ -87,17 +96,14 @@ export default function App() {
     if (!taskToToggle) return;
 
     const isStopping = taskToToggle.isRunning;
-
     setTasks(
       tasks.map(task =>
-        task.id === id
-          ? { ...task, isRunning: !task.isRunning, startTime: !isStopping ? Date.now() : undefined }
-          : task
+        task.id === id ? { ...task, isRunning: !task.isRunning } : task
       )
     );
 
-    if (isStopping) {
-      api.syncTask(id, taskToToggle.timeSpent, authToken!);
+    if (isStopping && authToken) {
+      api.syncTask(id, taskToToggle.timeSpent, authToken);
     }
   };
 
@@ -106,7 +112,6 @@ export default function App() {
   };
 
   // --- Рендеринг ---
-
   if (isLoading) {
     return <div className="min-h-screen bg-black flex items-center justify-center text-white">Загрузка...</div>;
   }
