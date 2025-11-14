@@ -1,7 +1,7 @@
 // Этот файл решает, использовать реальный API или заглушку.
 // Единственное место, которое вам нужно будет изменить для переключения.
 
-const USE_MOCK_API = true; // <-- Поставьте `false`, когда ваш бэкенд будет готов!
+const USE_MOCK_API = false; // <-- Поставьте `false`, когда ваш бэкенд будет готов!
 
 import * as realApi from './realApi';
 import * as mockApi from './mockApi';
