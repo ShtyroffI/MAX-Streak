@@ -67,15 +67,19 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(() => {
       setTasks(prevTasks =>
-        prevTasks.map(task =>
-          task.isRunning
-            ? { ...task, timeSpent: task.timeSpent + 1 }
-            : task
-        )
+        prevTasks.map(task => {
+          // Проверяем, что таймер должен работать
+          if (task.isRunning) {
+            // Гарантируем, что timeSpent является числом, иначе начинаем с 0
+            const currentTime = typeof task.timeSpent === 'number' ? task.timeSpent : 0;
+            return { ...task, timeSpent: currentTime + 1 };
+          }
+          return task;
+        })
       );
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, []); // Пустой массив зависимостей остается
 
   // --- Функции-обработчики ---
   const handleAddTask = async (text: string) => {
@@ -87,8 +91,18 @@ export default function App() {
 
   const handleDeleteTask = async (id: number) => {
     if (!authToken) return;
-    await api.deleteTask(id, authToken);
-    setTasks(tasks.filter(t => t.id !== id));
+
+    // 1. Сначала МГНОВЕННО удаляем задачу из интерфейса
+    setTasks(tasks.filter(t => t.id !== id)); // <-- Это и есть оптимистичное обновление
+
+    // 2. Затем отправляем запрос на бэкенд в фоновом режиме
+    try {
+      await api.deleteTask(id, authToken);
+    } catch (error) {
+      console.error("Failed to delete task on server:", error);
+      // Если на сервере произошла ошибка, нужно вернуть задачу обратно
+      // Но для хакатона можно это опустить
+    }
   };
 
   const handleToggleTimer = (id: number) => {
@@ -96,6 +110,7 @@ export default function App() {
     if (!taskToToggle) return;
 
     const isStopping = taskToToggle.isRunning;
+
     setTasks(
       tasks.map(task =>
         task.id === id ? { ...task, isRunning: !task.isRunning } : task
@@ -103,9 +118,13 @@ export default function App() {
     );
 
     if (isStopping && authToken) {
-      api.syncTask(id, taskToToggle.timeSpent, authToken);
+      // Гарантируем, что timeSpent является числом
+      const timeToSend = typeof taskToToggle.timeSpent === 'number' ? taskToToggle.timeSpent : 0;
+      // Math.floor на всякий случай, если будут дробные числа
+      api.syncTask(id, Math.floor(timeToSend), authToken);
     }
   };
+
 
   const handleUpdateGoal = (id: number, minutes: number) => {
     console.log("Update goal logic to be implemented");

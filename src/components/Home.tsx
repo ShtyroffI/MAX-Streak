@@ -18,6 +18,10 @@ export function Home({ userData, tasks }: HomeProps) {
   const longestStreakEver = tasks.reduce((max, task) => task.longest_streak > max ? task.longest_streak : max, 0);
 
   const formatTime = (seconds: number) => {
+    // Проверка на входе
+    if (isNaN(seconds) || seconds < 0) {
+      seconds = 0;
+    }
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     return { hours, minutes };

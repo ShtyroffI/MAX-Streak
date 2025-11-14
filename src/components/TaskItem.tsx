@@ -18,7 +18,7 @@ export function TaskItem({ task, onToggleTimer, onUpdateGoal, onDelete }: TaskIt
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
+
     if (hours > 0) {
       return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
@@ -40,11 +40,10 @@ export function TaskItem({ task, onToggleTimer, onUpdateGoal, onDelete }: TaskIt
         {/* Timer Button */}
         <button
           onClick={() => onToggleTimer(task.id)}
-          className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
-            task.isRunning
+          className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${task.isRunning
               ? 'bg-orange-500 hover:bg-orange-600'
               : 'bg-zinc-800 hover:bg-zinc-700'
-          }`}
+            }`}
         >
           {task.isRunning ? (
             <Pause className="w-5 h-5 text-white" />
@@ -98,9 +97,8 @@ export function TaskItem({ task, onToggleTimer, onUpdateGoal, onDelete }: TaskIt
       {/* Progress Bar */}
       <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
         <div
-          className={`h-full transition-all ${
-            task.completedToday ? 'bg-green-500' : 'bg-orange-500'
-          }`}
+          className={`h-full transition-all ${task.completedToday ? 'bg-green-500' : 'bg-orange-500'
+            }`}
           style={{ width: `${Math.min(progress, 100)}%` }}
         />
       </div>
