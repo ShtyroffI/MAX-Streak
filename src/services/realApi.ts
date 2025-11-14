@@ -21,7 +21,7 @@ export const authenticateAndGetData = async (initData: string) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // Используем ключ "raw", как было в нашем ТЗ
-        body: JSON.stringify({ raw: initData }),
+        body: JSON.stringify({ raw_init_data: initData }),
     });
 };
 
