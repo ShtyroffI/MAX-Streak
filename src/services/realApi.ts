@@ -2,7 +2,7 @@
 
 // --- ВАШЕ МЕСТО РАБОТЫ ---
 // Просто замените эту ссылку на адрес вашего развернутого бэкенда
-const API_URL = "http://localhost:8000";
+const API_URL = "https://95cpfcz2-8000.euw.devtunnels.ms/";
 // -------------------------
 
 const request = async (url: string, options: RequestInit = {}) => {
