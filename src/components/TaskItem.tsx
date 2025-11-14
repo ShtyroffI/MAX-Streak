@@ -5,9 +5,10 @@ import { Input } from './ui/input';
 
 interface TaskItemProps {
   task: Task;
-  onToggleTimer: (id: string) => void;
-  onUpdateGoal: (id: string, minutes: number) => void;
-  onDelete: (id: string) => void;
+  // Указываем, что функции принимают number
+  onToggleTimer: (id: number) => void;
+  onUpdateGoal: (id: number, minutes: number) => void;
+  onDelete: (id: number) => void;
 }
 
 export function TaskItem({ task, onToggleTimer, onUpdateGoal, onDelete }: TaskItemProps) {
@@ -15,14 +16,17 @@ export function TaskItem({ task, onToggleTimer, onUpdateGoal, onDelete }: TaskIt
   const [goalMinutes, setGoalMinutes] = useState(Math.floor(task.goal / 60));
 
   const formatTime = (seconds: number) => {
+    if (typeof seconds !== 'number' || isNaN(seconds) || seconds < 0) {
+      seconds = 0;
+    }
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
+    const secs = Math.floor(seconds % 60);
 
     if (hours > 0) {
       return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const progress = (task.timeSpent / task.goal) * 100;
@@ -37,12 +41,10 @@ export function TaskItem({ task, onToggleTimer, onUpdateGoal, onDelete }: TaskIt
   return (
     <div className="bg-zinc-900 rounded-lg p-4">
       <div className="flex items-center gap-3 mb-3">
-        {/* Timer Button */}
+        {/* ИСПРАВЛЕНИЕ 1: Убираем String() */}
         <button
           onClick={() => onToggleTimer(task.id)}
-          className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${task.isRunning
-              ? 'bg-orange-500 hover:bg-orange-600'
-              : 'bg-zinc-800 hover:bg-zinc-700'
+          className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${task.isRunning ? 'bg-orange-500 hover:bg-orange-600' : 'bg-zinc-800 hover:bg-zinc-700'
             }`}
         >
           {task.isRunning ? (
@@ -52,11 +54,10 @@ export function TaskItem({ task, onToggleTimer, onUpdateGoal, onDelete }: TaskIt
           )}
         </button>
 
-        {/* Task Info */}
-        <div className="flex-1">
-          <p className="text-white mb-1">{task.text}</p>
+        <div className="flex-1 min-w-0">
+          <p className="text-white mb-1 truncate">{task.text}</p>
           <div className="flex items-center gap-3 text-sm">
-            <span className={`${task.completedToday ? 'text-green-500' : 'text-zinc-400'}`}>
+            <span className={`font-mono ${task.completed_today ? 'text-green-500' : 'text-zinc-400'}`}>
               {formatTime(task.timeSpent)}
             </span>
             <span className="text-zinc-600">/</span>
@@ -85,20 +86,15 @@ export function TaskItem({ task, onToggleTimer, onUpdateGoal, onDelete }: TaskIt
           </div>
         </div>
 
-        {/* Delete Button */}
-        <button
-          onClick={() => onDelete(task.id)}
-          className="text-zinc-500 hover:text-red-500 transition-colors"
-        >
+        {/* ИСПРАВЛЕНИЕ 2: Убираем String() */}
+        <button onClick={() => onDelete(task.id)} className="text-zinc-500 hover:text-red-500 transition-colors">
           <Trash2 className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Progress Bar */}
       <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
         <div
-          className={`h-full transition-all ${task.completedToday ? 'bg-green-500' : 'bg-orange-500'
-            }`}
+          className={`h-full transition-all ${task.completed_today ? 'bg-green-500' : 'bg-orange-500'}`}
           style={{ width: `${Math.min(progress, 100)}%` }}
         />
       </div>
