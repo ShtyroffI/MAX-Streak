@@ -1,10 +1,11 @@
-// Этот файл будет экспортировать либо реальные функции API, либо заглушки.
+// Этот файл решает, использовать реальный API или заглушку.
+// Единственное место, которое вам нужно будет изменить для переключения.
 
-const MOCK_API = true; // <-- ГЛАВНЫЙ ПЕРЕКЛЮЧАТЕЛЬ!
+const USE_MOCK_API = true; // <-- Поставьте `false`, когда ваш бэкенд будет готов!
 
-// Импортируем функции из обоих источников
 import * as realApi from './realApi';
 import * as mockApi from './mockApi';
 
-// Экспортируем нужную версию в зависимости от переключателя
-export default MOCK_API ? mockApi : realApi;
+const api = USE_MOCK_API ? mockApi : realApi;
+
+export default api;

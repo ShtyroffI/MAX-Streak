@@ -1,37 +1,44 @@
-// Здесь будет жить логика реальных сетевых запросов
+// Здесь будут жить реальные сетевые запросы к вашему бэкенду
 
+// --- ВАШЕ МЕСТО РАБОТЫ ---
+// Просто замените эту ссылку на адрес вашего развернутого бэкенда
 const API_URL = "http://localhost:8000";
+// -------------------------
 
-// Вспомогательная функция, чтобы не дублировать код
 const request = async (url: string, options: RequestInit = {}) => {
     const response = await fetch(url, options);
     if (!response.ok) {
+        const errorBody = await response.text();
+        console.error(`HTTP error! status: ${response.status}`, errorBody);
         throw new Error(`Network response was not ok for url: ${url}`);
     }
     return response.json();
 };
 
-export const getTasks = async (authToken: string) => {
-    return request(`${API_URL}/tasks/`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+export const authenticateAndGetData = async (initData: string) => {
+    return request(`${API_URL}/auth/max`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raw: initData }),
     });
 };
 
+// Все остальные функции должны принимать токен, который вернет ваш эндпоинт аутентификации
 export const addTask = async (text: string, goal: number, authToken: string) => {
     return request(`${API_URL}/tasks/`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
+            'Authorization': `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ text, goal })
+        body: JSON.stringify({ text, goal }),
     });
 };
 
 export const deleteTask = async (id: number, authToken: string) => {
     return request(`${API_URL}/tasks/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        headers: { 'Authorization': `Bearer ${authToken}` },
     });
 };
 

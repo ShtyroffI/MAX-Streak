@@ -1,101 +1,155 @@
 import { useEffect, useState } from 'react';
 import { Profile } from './components/Profile';
-import { Tasks } from './components/Tasks';
+import { Tasks, Task } from './components/Tasks'; // Импортируем Task
 import { Home } from './components/Home';
 import { Home as HomeIcon, ListTodo, User } from 'lucide-react';
+import api from './services/api'; // Импортируем наш умный API
 
-// Глобальное объявление для объекта maxBridge
 declare global {
-  interface Window {
-    maxBridge: any; // В идеале здесь должен быть более строгий тип из документации
-  }
+  interface Window { maxBridge: any; }
 }
 
-// Создадим тип для данных пользователя для наглядности
-interface MaxUserData {
+interface UserData {
   id: string;
   name: string;
   avatar: string;
-  token: string; // Это самый важный токен для авторизации на бэкенде
 }
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<'home' | 'profile' | 'tasks'>('home');
-  // Состояние для хранения данных пользователя
-  const [userData, setUserData] = useState<MaxUserData | null>(null);
-  // Отдельное состояние для токена, чтобы его было удобно передавать в API-слой
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [authToken, setAuthToken] = useState<string | null>(null); // Может понадобиться для реального API
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // --- Основная логика приложения теперь здесь ---
 
   useEffect(() => {
-    // Асинхронная функция для инициализации Bridge
-    const initializeBridge = async () => {
-      if (window.maxBridge) {
-        try {
-          console.log("MAX Bridge found, initializing...");
-          // 1. Инициализация Bridge
+    const initializeApp = async () => {
+      try {
+        let initDataString = "mock"; // По умолчанию для заглушки
+
+        if (window.maxBridge) {
           await window.maxBridge.init();
-          console.log("MAX Bridge initialized successfully");
-
-          // 2. Получение данных пользователя
-          const data = await window.maxBridge.getUserData();
-          console.log("User data received:", data);
-          setUserData(data);
-
-          // 3. Сохраняем токен для всех будущих запросов к API
-          // В реальном приложении вы бы передали этот токен в ваш API-клиент
-          // например: api.setAuthToken(data.token);
-          setAuthToken(data.token);
-
-        } catch (error) {
-          console.error("MAX Bridge initialization or data fetching failed:", error);
+          initDataString = await window.maxBridge.getLaunchParams();
+        } else {
+          console.warn("MAX Bridge not found. Using mock data.");
         }
-      } else {
-        console.warn("MAX Bridge not found. Running in standalone browser mode.");
-        // Устанавливаем "тестовые" данные для разработки в обычном браузере
-        const mockUser = { id: 'test_user', name: 'Тестовый Пользователь', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop', token: 'test_token' };
-        setUserData(mockUser);
-        setAuthToken(mockUser.token);
+
+        // Единственный запрос при старте
+        const { user, tasks: fetchedTasks } = await api.authenticateAndGetData(initDataString);
+
+        setUserData(user);
+        setTasks(fetchedTasks);
+        // В реальном API здесь может вернуться токен, который нужно сохранить
+        // setAuthToken(user.token); 
+
+      } catch (err) {
+        console.error("Initialization error:", err);
+        setError("Не удалось загрузить приложение.");
+      } finally {
+        setIsLoading(false);
       }
     };
+    initializeApp();
+  }, []);
 
-    initializeBridge();
-  }, []); // Пустой массив зависимостей гарантирует, что эффект выполнится один раз
+  // Локальная логика таймеров
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTasks(prevTasks =>
+        prevTasks.map(task =>
+          task.isRunning && task.startTime
+            ? { ...task, timeSpent: task.timeSpent + 1 }
+            : task
+        )
+      );
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // --- Функции-обработчики, которые передаются дочерним компонентам ---
+
+  const handleAddTask = async (text: string) => {
+    await api.addTask(text, 1800, authToken!); // `!` означает, что мы уверены, что токен есть
+    const updatedTasks = await api.getTasks(authToken!); // Перезапрашиваем данные
+    setTasks(updatedTasks);
+  };
+
+  const handleDeleteTask = async (id: number) => {
+    await api.deleteTask(id, authToken!);
+    setTasks(tasks.filter(t => t.id !== id)); // Оптимистичное обновление
+  };
+
+  const handleToggleTimer = (id: number) => {
+    const taskToToggle = tasks.find(t => t.id === id);
+    if (!taskToToggle) return;
+
+    const isStopping = taskToToggle.isRunning;
+
+    setTasks(
+      tasks.map(task =>
+        task.id === id
+          ? { ...task, isRunning: !task.isRunning, startTime: !isStopping ? Date.now() : undefined }
+          : task
+      )
+    );
+
+    if (isStopping) {
+      api.syncTask(id, taskToToggle.timeSpent, authToken!);
+    }
+  };
+
+  const handleUpdateGoal = (id: number, minutes: number) => {
+    console.log("Update goal logic to be implemented");
+  };
+
+  // --- Рендеринг ---
+
+  if (isLoading) {
+    return <div className="min-h-screen bg-black flex items-center justify-center text-white">Загрузка...</div>;
+  }
+  if (error) {
+    return <div className="min-h-screen bg-black flex items-center justify-center text-red-500">{error}</div>;
+  }
 
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="max-w-2xl mx-auto pb-20">
-        {/* 
-          Теперь мы передаем полученные данные в дочерние компоненты.
-          Это позволит персонализировать интерфейс и делать защищенные запросы к API.
-        */}
-        {currentTab === 'home' && <Home userData={userData} />}
-        {currentTab === 'profile' && <Profile userData={userData} />}
-        {currentTab === 'tasks' && <Tasks authToken={authToken} />}
+        {currentTab === 'home' && <Home userData={userData} tasks={tasks} />}
+        {currentTab === 'profile' && <Profile userData={userData} tasks={tasks} />}
+        {currentTab === 'tasks' && (
+          <Tasks
+            tasks={tasks}
+            onAddTask={handleAddTask}
+            onDeleteTask={handleDeleteTask}
+            onToggleTimer={handleToggleTimer}
+            onUpdateGoal={handleUpdateGoal}
+          />
+        )}
       </div>
 
-      {/* Bottom Navigation */}
+      {/* Навигация */}
       <div className="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800">
         <div className="max-w-2xl mx-auto flex">
           <button
             onClick={() => setCurrentTab('profile')}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'profile' ? 'text-orange-500' : 'text-zinc-400'
-              }`}
+            className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'profile' ? 'text-orange-500' : 'text-zinc-400'}`}
           >
             <User className="w-6 h-6" />
             <span className="text-xs">Профиль</span>
           </button>
           <button
             onClick={() => setCurrentTab('home')}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'home' ? 'text-orange-500' : 'text-zinc-400'
-              }`}
+            className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'home' ? 'text-orange-500' : 'text-zinc-400'}`}
           >
             <HomeIcon className="w-6 h-6" />
             <span className="text-xs">Главная</span>
           </button>
           <button
             onClick={() => setCurrentTab('tasks')}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'tasks' ? 'text-orange-500' : 'text-zinc-400'
-              }`}
+            className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'tasks' ? 'text-orange-500' : 'text-zinc-400'}`}
           >
             <ListTodo className="w-6 h-6" />
             <span className="text-xs">Таски</span>
