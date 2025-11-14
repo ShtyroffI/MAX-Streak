@@ -1,7 +1,7 @@
 // Здесь будут жить реальные сетевые запросы к вашему бэкенду
 
 // 1. Указываем ссылку на ваш бэкенд (без слеша в конце)
-const API_URL = "https://95cfptcz-8000.euv.devtunnels.ms";
+const API_URL = "https://95cpfcz2-8000.euw.devtunnels.ms";
 
 // Вспомогательная функция для запросов
 const request = async (url: string, options: RequestInit = {}) => {
