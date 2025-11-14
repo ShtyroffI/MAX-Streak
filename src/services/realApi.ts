@@ -47,9 +47,17 @@ export const deleteTask = async (id: number, authToken: string) => {
 };
 
 export const syncTask = async (id: number, timeSpent: number, authToken: string) => {
-    return request(`${API_URL}/tasks/${id}/sync?time_spent=${timeSpent}`, {
+    const url = `${API_URL}/tasks/${id}/sync`;
+    const timeSpentInteger = Math.floor(timeSpent);
+    const body = JSON.stringify({ time_spent_today: timeSpentInteger });
+
+    return request(url, {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${authToken}` },
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+        },
+        body: body,
     });
 };
 
