@@ -57,7 +57,7 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
 
 # --- Эндпоинты ---
 
-@app.post("/auth/validate", response_model=schemas.AuthResponse)
+@app.post("/auth/max", response_model=schemas.AuthResponse)
 def validate_and_authenticate(init_data: schemas.InitData, db: Session = Depends(get_db)):
     """
     Валидирует initData, находит или создает пользователя,
