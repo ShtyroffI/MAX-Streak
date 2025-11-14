@@ -4,6 +4,8 @@ from datetime import date
 from typing import List, Optional
 
 # --- Схемы для задач ---
+class TaskSync(BaseModel):
+    time_spent_today: int
 
 # Базовая схема задачи
 class TaskBase(BaseModel):
@@ -21,6 +23,7 @@ class Task(TaskBase):
     streak: int
     longest_streak: int
     last_completed_date: Optional[date] = None
+    time_spent_today: int
 
     class Config:
         from_attributes = True

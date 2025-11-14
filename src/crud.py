@@ -10,8 +10,20 @@ def get_task(db: Session, task_id: int, user_id: str):
     return db.query(models.Task).filter(models.Task.id == task_id, models.Task.user_id == user_id).first()
 
 def get_tasks_by_user(db: Session, user_id: str):
-    """Получить все задачи пользователя."""
-    return db.query(models.Task).filter(models.Task.user_id == user_id).all()
+    """
+    Получить все задачи пользователя.
+    При первом заходе в новый день - сбросить прогресс.
+    """
+    tasks = db.query(models.Task).filter(models.Task.user_id == user_id).all()
+    today = date.today()
+    
+    for task in tasks:
+        if task.last_sync_date is None or task.last_sync_date < today:
+            task.time_spent_today = 0
+            task.last_sync_date = today
+    db.commit()
+    
+    return tasks
 
 def create_user_task(db: Session, task: schemas.TaskCreate, user_id: str):
     """Создать новую задачу для пользователя."""
@@ -30,29 +42,30 @@ def delete_task(db: Session, task_id: int, user_id: str):
         return db_task
     return None
 
-def update_task_streak(db: Session, task: models.Task, time_spent: int):
-    """Обновляет стрик задачи на основе потраченного времени."""
+def update_task_progress(db: Session, task: models.Task, time_spent_today: int):
+    """
+    Обновляет прогресс задачи и стрик на основе потраченного времени.
+    """
     today = date.today()
     
-    # Цель достигнута и сегодня мы еще не отмечали выполнение
-    if time_spent >= task.goal and task.last_completed_date != today:
+    # 1. Сохраняем актуальный прогресс
+    task.time_spent_today = time_spent_today
+    task.last_sync_date = today
+    
+    # 2. Проверяем, выполнена ли цель
+    if task.time_spent_today >= task.goal and task.last_completed_date != today:
         yesterday = today - timedelta(days=1)
         
-        # Если последнее выполнение было вчера, увеличиваем стрик
         if task.last_completed_date == yesterday:
             task.streak += 1
-        # Иначе (был пропуск или это первый раз) - сбрасываем стрик на 1
         else:
             task.streak = 1
         
-        # Обновляем дату последнего выполнения
         task.last_completed_date = today
         
-        # Проверяем и обновляем рекордный стрик
         if task.streak > task.longest_streak:
             task.longest_streak = task.streak
             
-        db.commit()
-        db.refresh(task)
-        
+    db.commit()
+    db.refresh(task)
     return task

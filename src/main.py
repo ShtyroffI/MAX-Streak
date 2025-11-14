@@ -112,11 +112,21 @@ def delete_task(task_id: int, user_id: str = Depends(get_current_user_id), db: S
     return None
 
 @app.put("/tasks/{task_id}/sync", response_model=schemas.Task)
-def sync_task_progress(task_id: int, time_spent: int, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+def sync_task_progress(
+    task_id: int, 
+    sync_data: schemas.TaskSync, # Принимаем данные из тела запроса
+    user_id: str = Depends(get_current_user_id), 
+    db: Session = Depends(get_db)
+):
     """Синхронизировать прогресс и обновить стрик."""
     db_task = crud.get_task(db, task_id=task_id, user_id=user_id)
     if db_task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    updated_task = crud.update_task_streak(db=db, task=db_task, time_spent=time_spent)
+    # Передаем обновленное время в CRUD функцию
+    updated_task = crud.update_task_progress(
+        db=db, 
+        task=db_task, 
+        time_spent_today=sync_data.time_spent_today
+    )
     return updated_task
