@@ -17,7 +17,7 @@ async def get_or_create_user(db: AsyncSession, user_id: str):
         await db.refresh(user)
     return user
 
-async def get_user_stats(db: AsyncSession, user_id: str, tasks: List[models.Task]):
+async def get_user_stats(db: AsyncSession, user_id: str, tasks: list[models.Task]):
     """Собирает и возвращает общую статистику пользователя."""
     user = await get_or_create_user(db, user_id)
     current_streak = 0
