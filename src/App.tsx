@@ -15,10 +15,8 @@ interface UserData {
   avatar: string;
 }
 
-// ИСПРАВЛЕНИЕ 1: Правильно читаем данные с бэкенда
 const enrichTask = (taskFromServer: any): Task => ({
   ...taskFromServer,
-  // Читаем time_spent_today с сервера, если его нет - ставим 0
   timeSpent: typeof taskFromServer.time_spent_today === 'number' ? taskFromServer.time_spent_today : 0,
   isRunning: false,
 });
@@ -31,23 +29,21 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // --- ИНИЦИАЛИЗАЦИЯ И РАБОТА С BRIDGE ---
+
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        let initDataString = "mock";
-        if (window.WebApp && window.WebApp.initData) {
-          initDataString = window.WebApp.initData;
-          window.WebApp.ready();
-        } else {
-          console.warn("WebApp.initData not found. Using mock data.");
-        }
+        const initDataString = await waitForWebApp();
 
         const response = await api.authenticateAndGetData(initDataString);
 
         setUserData(response.user);
-        // Теперь enrichTask работает правильно
         setTasks(response.tasks.map(enrichTask));
         setAuthToken(response.auth_token);
+
+        // Сообщаем MAX, что UI готов к отображению
+        window.WebApp?.ready();
 
       } catch (err) {
         console.error("Initialization error:", err);
@@ -56,42 +52,106 @@ export default function App() {
         setIsLoading(false);
       }
     };
+
+    const waitForWebApp = (): Promise<string> => {
+      return new Promise((resolve) => {
+        if (window.WebApp && window.WebApp.initData) {
+          return resolve(window.WebApp.initData);
+        }
+        // Если WebApp еще не готов, ждем его появления
+        let attempts = 0;
+        const interval = setInterval(() => {
+          if (window.WebApp && window.WebApp.initData) {
+            clearInterval(interval);
+            resolve(window.WebApp.initData);
+          } else {
+            attempts++;
+            if (attempts > 20) { // Ждем макс. 2 секунды
+              clearInterval(interval);
+              console.warn("WebApp not found after timeout. Using mock data.");
+              resolve("mock_for_browser_dev"); // Переходим в режим заглушки
+            }
+          }
+        }, 100);
+      });
+    };
+
     initializeApp();
   }, []);
 
+  // Управление нативными фичами в зависимости от состояния
   useEffect(() => {
+    if (!window.WebApp) return;
+
+    // Управляем кнопкой "Назад"
+    const backButton = window.WebApp.BackButton;
+    if (currentTab === 'home') {
+      backButton.hide();
+    } else {
+      backButton.show();
+    }
+
+    // Обработчик для кнопки "Назад"
+    const handleBackClick = () => setCurrentTab('home');
+    backButton.onClick(handleBackClick);
+
+    // Управляем подтверждением закрытия
+    const hasRunningTask = tasks.some(task => task.isRunning);
+    if (hasRunningTask) {
+      window.WebApp.enableClosingConfirmation();
+    } else {
+      window.WebApp.disableClosingConfirmation();
+    }
+
+    // Очищаем обработчик при размонтировании
+    return () => {
+      backButton.offClick(handleBackClick);
+    };
+
+  }, [currentTab, tasks]);
+
+
+  // --- ЛОГИКА ТАЙМЕРОВ И ОБРАБОТЧИКИ ---
+
+  useEffect(() => {
+    const hasRunningTask = tasks.some(task => task.isRunning);
+    if (!hasRunningTask) return;
+
     const interval = setInterval(() => {
       setTasks(prevTasks =>
-        prevTasks.map(task => {
-          if (task.isRunning) {
-            const currentTime = typeof task.timeSpent === 'number' ? task.timeSpent : 0;
-            return { ...task, timeSpent: currentTime + 1 };
-          }
-          return task;
-        })
+        prevTasks.map(task =>
+          task.isRunning ? { ...task, timeSpent: (task.timeSpent || 0) + 1 } : task
+        )
       );
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [tasks]);
+
 
   const handleAddTask = async (text: string) => {
     if (!authToken) return;
     try {
       const newTaskFromServer = await api.addTask(text, 1800, authToken);
-      // Применяем enrichTask и к новым задачам
       setTasks(prevTasks => [...prevTasks, enrichTask(newTaskFromServer)]);
+      // Тактильный отклик об успехе
+      window.WebApp?.HapticFeedback.notificationOccurred('success');
     } catch (error) {
       console.error("Failed to add task:", error);
+      window.WebApp?.HapticFeedback.notificationOccurred('error');
     }
   };
 
   const handleDeleteTask = async (id: number) => {
     if (!authToken) return;
+    const originalTasks = tasks;
     setTasks(tasks.filter(t => t.id !== id));
+    window.WebApp?.HapticFeedback.impactOccurred('medium');
     try {
       await api.deleteTask(id, authToken);
     } catch (error) {
       console.error("Failed to delete task:", error);
+      setTasks(originalTasks); // Возвращаем задачи в случае ошибки
+      window.WebApp?.HapticFeedback.notificationOccurred('error');
     }
   };
 
@@ -99,6 +159,7 @@ export default function App() {
     const taskToToggle = tasks.find(t => t.id === id);
     if (!taskToToggle) return;
 
+    window.WebApp?.HapticFeedback.impactOccurred('light'); // Вибрация при старте/стопе
     const isStopping = taskToToggle.isRunning;
 
     setTasks(
@@ -108,17 +169,12 @@ export default function App() {
     );
 
     if (isStopping && authToken) {
-      const timeToSend = typeof taskToToggle.timeSpent === 'number' ? taskToToggle.timeSpent : 0;
+      const timeToSend = taskToToggle.timeSpent || 0;
       try {
         const updatedTaskFromServer = await api.syncTask(id, Math.floor(timeToSend), authToken);
-
         setTasks(prevTasks => prevTasks.map(task =>
           task.id === id
-            ? {
-              // ИСПРАВЛЕНИЕ 2: Применяем enrichTask к ответу от sync, но сохраняем isRunning
-              ...enrichTask(updatedTaskFromServer),
-              isRunning: false // Явно выключаем таймер
-            }
+            ? { ...enrichTask(updatedTaskFromServer), isRunning: false }
             : task
         ));
       } catch (error) {
@@ -130,6 +186,8 @@ export default function App() {
   const handleUpdateGoal = (id: number, minutes: number) => {
     console.log("Update goal logic to be implemented");
   };
+
+  // --- РЕНДЕРИНГ ---
 
   if (isLoading) {
     return <div className="min-h-screen bg-black flex items-center justify-center text-white">Загрузка...</div>;
@@ -153,7 +211,8 @@ export default function App() {
           />
         )}
       </div>
-      {/* Навигация без изменений */}
+
+      {/* Навигация */}
       <div className="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800">
         <div className="max-w-2xl mx-auto flex">
           <button onClick={() => setCurrentTab('profile')} className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'profile' ? 'text-orange-500' : 'text-zinc-400'}`}>
