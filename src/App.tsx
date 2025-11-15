@@ -30,8 +30,8 @@ export default function App() {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [authToken, setAuthToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Для начальной загрузки
-  const [isSubmitting, setIsSubmitting] = useState(false); // Для блокировки UI во время запросов
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // --- ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ И РАБОТА С MAX BRIDGE ---
@@ -128,13 +128,12 @@ export default function App() {
 
   // --- ФУНКЦИИ-ОБРАБОТЧИКИ ДЕЙСТВИЙ ПОЛЬЗОВАТЕЛЯ ---
 
-  const handleAddTask = async (text: string) => {
-    if (!text.trim() || !authToken || isSubmitting) {
-      return;
-    }
+  const handleAddTask = async (text: string, isTimer: boolean, goalMins: number) => {
+    if (!text.trim() || !authToken || isSubmitting) return;
     try {
       setIsSubmitting(true);
-      const newTaskFromServer = await api.addTask(text, 1800, authToken);
+      const task_type = isTimer ? 'timer' : 'checklist';
+      const newTaskFromServer = await api.addTask(text, task_type, goalMins, authToken);
       setTasks(prevTasks => [...prevTasks, enrichTask(newTaskFromServer)]);
       window.WebApp?.HapticFeedback.notificationOccurred('success');
     } catch (error) {
@@ -147,17 +146,11 @@ export default function App() {
 
   const handleDeleteTask = async (id: number) => {
     if (!authToken || isSubmitting) return;
-
     try {
       setIsSubmitting(true);
       window.WebApp?.HapticFeedback.impactOccurred('medium');
-
-      // Сначала ждем ответа от сервера
       await api.deleteTask(id, authToken);
-
-      // И только потом обновляем UI
       setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
-
     } catch (error) {
       console.error("Failed to delete task:", error);
       window.WebApp?.HapticFeedback.notificationOccurred('error');
@@ -197,6 +190,21 @@ export default function App() {
       }
     }
   };
+
+  const handleToggleChecklist = async (id: number) => {
+    if (!authToken || isSubmitting) return;
+    try {
+      setIsSubmitting(true);
+      window.WebApp?.HapticFeedback.impactOccurred('light');
+      const updatedTask = await api.toggleTask(id, authToken);
+      setTasks(prev => prev.map(t => t.id === id ? enrichTask(updatedTask) : t));
+    } catch (error) {
+      console.error("Failed to toggle checklist task:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
 
   const handleUpdateGoal = (id: number, minutes: number) => {
     console.log("Update goal logic to be implemented");
