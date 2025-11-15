@@ -146,20 +146,20 @@ export default function App() {
   };
 
   const handleDeleteTask = async (id: number) => {
-    if (!authToken || isSubmitting) {
-      return;
-    }
-
-    const originalTasks = tasks;
-    setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
-    window.WebApp?.HapticFeedback.impactOccurred('medium');
+    if (!authToken || isSubmitting) return;
 
     try {
       setIsSubmitting(true);
+      window.WebApp?.HapticFeedback.impactOccurred('medium');
+
+      // Сначала ждем ответа от сервера
       await api.deleteTask(id, authToken);
+
+      // И только потом обновляем UI
+      setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
+
     } catch (error) {
       console.error("Failed to delete task:", error);
-      setTasks(originalTasks);
       window.WebApp?.HapticFeedback.notificationOccurred('error');
     } finally {
       setIsSubmitting(false);
@@ -175,7 +175,7 @@ export default function App() {
 
     setTasks(prevTasks =>
       prevTasks.map(task =>
-        task.id === id ? { ...task, isRunning: !task.isRunning } : task
+        task.id === id ? { ...task, isRunning: !isStopping } : task
       )
     );
 
@@ -185,7 +185,11 @@ export default function App() {
         const updatedTaskFromServer = await api.syncTask(id, Math.floor(timeToSend), authToken);
         setTasks(prevTasks => prevTasks.map(task =>
           task.id === id
-            ? { ...enrichTask(updatedTaskFromServer), isRunning: false }
+            ? {
+              ...enrichTask(updatedTaskFromServer),
+              timeSpent: timeToSend,
+              isRunning: false
+            }
             : task
         ));
       } catch (error) {
