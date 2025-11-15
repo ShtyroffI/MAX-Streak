@@ -1,18 +1,31 @@
 # src/main.py
+
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession # <-- 1. Импортируем асинхронную сессию
 from typing import List, Optional
 
+# Локальные импорты (файлы crud, models и т.д. тоже должны быть асинхронными)
 from . import crud, models, schemas, security
-from .database import SessionLocal, engine
+from .database import Base, engine, get_db # get_db теперь асинхронный
 
-# Создаем все таблицы в БД при запуске
-models.Base.metadata.create_all(bind=engine)
-
+# Создаем экземпляр приложения
 app = FastAPI(title="MAX Streak Mini App Backend")
 
-origins = ["*"]
+
+# 2. НОВЫЙ СПОСОБ СОЗДАНИЯ ТАБЛИЦ: асинхронно при старте приложения
+@app.on_event("startup")
+async def startup():
+    """
+    Создает таблицы в базе данных при запуске приложения.
+    """
+    async with engine.begin() as conn:
+        # await conn.run_sync(Base.metadata.drop_all) # Раскомментировать для сброса БД при каждом запуске
+        await conn.run_sync(Base.metadata.create_all)
+
+
+# Настройки CORS (остаются без изменений)
+origins = ["*"] # Для разработки разрешаем все источники
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,15 +35,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Зависимость для получения сессии БД
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
-# Зависимость для проверки JWT токена и получения user_id
+# Зависимость для проверки JWT токена (остается синхронной, т.к. нет I/O операций)
 def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
     if authorization is None:
         raise HTTPException(
@@ -55,10 +61,11 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
         )
     return user_id
 
-# --- Эндпоинты ---
+
+# --- API Эндпоинты (теперь все асинхронные) ---
 
 @app.post("/auth/max", response_model=schemas.AuthResponse)
-def validate_and_authenticate(init_data: schemas.InitData, db: Session = Depends(get_db)):
+async def validate_and_authenticate(init_data: schemas.InitData, db: AsyncSession = Depends(get_db)):
     """
     Валидирует initData, находит или создает пользователя,
     возвращает его данные, задачи и JWT токен.
@@ -72,67 +79,53 @@ def validate_and_authenticate(init_data: schemas.InitData, db: Session = Depends
 
     user_info = validation_data["user"]
     user_id = str(user_info.get("id"))
-
-    # Создаем JWT токен для пользователя
     access_token = security.create_access_token(data={"sub": user_id})
 
-    # Получаем все задачи пользователя из БД
-    user_tasks = crud.get_tasks_by_user(db, user_id=user_id)
+    # 3. Используем await для вызова асинхронной CRUD-функции
+    user_tasks = await crud.get_tasks_by_user(db, user_id=user_id)
     
-    # Формируем объект пользователя для ответа
     user_obj = schemas.User(
         id=user_id,
         name=f"{user_info.get('first_name', '')} {user_info.get('last_name', '')}".strip(),
         avatar=user_info.get('photo_url')
     )
 
-    return {
-        "user": user_obj,
-        "tasks": user_tasks,
-        "auth_token": access_token
-    }
+    return {"user": user_obj, "tasks": user_tasks, "auth_token": access_token}
+
 
 @app.get("/tasks/", response_model=List[schemas.Task])
-def read_tasks(user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
-    """Получить все задачи аутентифицированного пользователя."""
-    tasks = crud.get_tasks_by_user(db, user_id=user_id)
+async def read_tasks(user_id: str = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    tasks = await crud.get_tasks_by_user(db, user_id=user_id)
     return tasks
 
+
 @app.post("/tasks/", response_model=schemas.Task, status_code=status.HTTP_201_CREATED)
-def create_task(task: schemas.TaskCreate, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
-    """Создать новую задачу для аутентифицированного пользователя."""
-    return crud.create_user_task(db=db, task=task, user_id=user_id)
+async def create_task(task: schemas.TaskCreate, user_id: str = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    return await crud.create_user_task(db=db, task=task, user_id=user_id)
+
 
 @app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(task_id: int, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
-    """Удалить задачу по ID."""
-    deleted_task = crud.delete_task(db, task_id=task_id, user_id=user_id)
+async def delete_task(task_id: int, user_id: str = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    deleted_task = await crud.delete_task(db, task_id=task_id, user_id=user_id)
     if not deleted_task:
         raise HTTPException(status_code=404, detail="Task not found")
     return None
 
+
 @app.put("/tasks/{task_id}/sync", response_model=schemas.Task)
-def sync_task_progress(
+async def sync_task_progress(
     task_id: int, 
     sync_data: schemas.TaskSync,
     user_id: str = Depends(get_current_user_id), 
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """Синхронизировать прогресс и обновить стрик."""
-    print(f"--- SYNC START: Task ID {task_id} ---") # <--- Лог 1
-    print(f"Получено от фронтенда: time_spent_today = {sync_data.time_spent_today}") # <--- Лог 2
-
-    db_task = crud.get_task(db, task_id=task_id, user_id=user_id)
+    db_task = await crud.get_task(db, task_id=task_id, user_id=user_id)
     if db_task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    updated_task = crud.update_task_progress(
+    updated_task = await crud.update_task_progress(
         db=db, 
         task=db_task, 
         time_spent_today=sync_data.time_spent_today
     )
-    
-    print(f"Возвращаем на фронтенд: time_spent_today = {updated_task.time_spent_today}") # <--- Лог 3
-    print(f"--- SYNC END: Task ID {task_id} ---") # <--- Лог 4
-    
     return updated_task

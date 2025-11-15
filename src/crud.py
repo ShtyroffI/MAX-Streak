@@ -1,65 +1,58 @@
 # src/crud.py
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from . import models, schemas
 from datetime import date, timedelta
 
-# --- CRUD для задач ---
+async def get_task(db: AsyncSession, task_id: int, user_id: str):
+    """Асинхронно получить задачу по ID."""
+    query = select(models.Task).filter(models.Task.id == task_id, models.Task.user_id == user_id)
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
 
-def get_task(db: Session, task_id: int, user_id: str):
-    """Получить задачу по ID, убедившись, что она принадлежит пользователю."""
-    return db.query(models.Task).filter(models.Task.id == task_id, models.Task.user_id == user_id).first()
-
-def get_tasks_by_user(db: Session, user_id: str):
-    """
-    Получить все задачи пользователя.
-    При первом заходе в новый день - сбросить прогресс.
-    """
-    tasks = db.query(models.Task).filter(models.Task.user_id == user_id).all()
-    today = date.today()
+async def get_tasks_by_user(db: AsyncSession, user_id: str):
+    """Асинхронно получить все задачи пользователя и сбросить прогресс."""
+    query = select(models.Task).filter(models.Task.user_id == user_id)
+    result = await db.execute(query)
+    tasks = result.scalars().all()
     
+    today = date.today()
     tasks_changed = False
     for task in tasks:
-        # Проверяем, что дата последней синхронизации - это не сегодня
         if task.last_sync_date is None or task.last_sync_date < today:
             tasks_changed = True
-            # --- ИСПРАВЛЕННАЯ ЛОГИКА ---
-            task.time_spent_today = 0      # 1. Сбрасываем прогресс
-            task.last_sync_date = today    # 2. ОБНОВЛЯЕМ ДАТУ, чтобы больше не сбрасывать
-            # ---------------------------
+            task.time_spent_today = 0
+            task.last_sync_date = today
     
-    # Сохраняем изменения, только если они были
     if tasks_changed:
-        db.commit()
+        await db.commit()
     
     return tasks
-def create_user_task(db: Session, task: schemas.TaskCreate, user_id: str):
-    """Создать новую задачу для пользователя."""
+
+async def create_user_task(db: AsyncSession, task: schemas.TaskCreate, user_id: str):
+    """Асинхронно создать новую задачу."""
     db_task = models.Task(**task.dict(), user_id=user_id)
     db.add(db_task)
-    db.commit()
-    db.refresh(db_task)
+    await db.commit()
+    await db.refresh(db_task)
     return db_task
 
-def delete_task(db: Session, task_id: int, user_id: str):
-    """Удалить задачу пользователя."""
-    db_task = get_task(db, task_id, user_id)
+async def delete_task(db: AsyncSession, task_id: int, user_id: str):
+    """Асинхронно удалить задачу."""
+    db_task = await get_task(db, task_id, user_id)
     if db_task:
-        db.delete(db_task)
-        db.commit()
+        await db.delete(db_task)
+        await db.commit()
         return db_task
     return None
 
-def update_task_progress(db: Session, task: models.Task, time_spent_today: int):
-    """
-    Обновляет прогресс задачи и стрик на основе потраченного времени.
-    """
+async def update_task_progress(db: AsyncSession, task: models.Task, time_spent_today: int):
+    """Асинхронно обновить прогресс задачи."""
     today = date.today()
     
-    # 1. Сохраняем актуальный прогресс
     task.time_spent_today = time_spent_today
     task.last_sync_date = today
     
-    # 2. Проверяем, выполнена ли цель
     if task.time_spent_today >= task.goal and task.last_completed_date != today:
         yesterday = today - timedelta(days=1)
         
@@ -73,6 +66,6 @@ def update_task_progress(db: Session, task: models.Task, time_spent_today: int):
         if task.streak > task.longest_streak:
             task.longest_streak = task.streak
             
-    db.commit()
-    db.refresh(task)
+    await db.commit()
+    await db.refresh(task)
     return task

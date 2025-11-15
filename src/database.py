@@ -1,26 +1,25 @@
 # src/database.py
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 
-# URL для подключения к SQLite. БД будет храниться в файле ./sql_app.db
-SQLALCHEMY_DATABASE_URL = "sqlite:///./sql_app.db"
+# Новые импорты для асинхронной работы
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.orm import declarative_base
 
-# Создаем движок SQLAlchemy
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+# URL для асинхронного драйвера aiosqlite
+SQLALCHEMY_DATABASE_URL = "sqlite+aiosqlite:///./sql_app.db"
 
-# Создаем фабрику сессий, которая будет создавать сессии для взаимодействия с БД
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Создаем асинхронный движок
+engine = create_async_engine(SQLALCHEMY_DATABASE_URL)
 
-# Базовый класс для декларативных моделей SQLAlchemy
+# Создаем асинхронную "фабрику" сессий
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+# Базовый класс для моделей остается прежним
 Base = declarative_base()
 
-# Функция-зависимость для получения сессии БД в эндпоинтах FastAPI
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Новая асинхронная функция для получения сессии
+async def get_db():
+    """
+    Асинхронный генератор сессий.
+    """
+    async with AsyncSessionLocal() as session:
+        yield session
