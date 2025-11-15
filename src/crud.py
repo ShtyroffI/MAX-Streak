@@ -30,7 +30,7 @@ async def get_task(db: AsyncSession, task_id: int, user_id: str):
     return result.scalar_one_or_none()
 
 async def get_tasks_by_user(db: AsyncSession, user_id: str):
-    """Асинхронно получить все задачи пользователя и сбросить статус is_completed для старых задач."""
+    """Асинхронно получить все задачи пользователя и сбросить статусы для старых задач."""
     query = select(models.Task).filter(models.Task.user_id == user_id)
     result = await db.execute(query)
     tasks = result.scalars().all()
@@ -42,7 +42,7 @@ async def get_tasks_by_user(db: AsyncSession, user_id: str):
         if task.is_completed and task.last_completed_date and task.last_completed_date < today:
             task.is_completed = False
             changed = True
-        # Сбрасываем счетчик времени для таймерных задач
+        # Сбрасываем счетчик времени для таймерных задач, если наступил новый день
         if task.task_type == 'timer' and task.last_completed_date and task.last_completed_date < today:
              task.time_spent_today = 0
              changed = True
@@ -61,7 +61,7 @@ async def create_user_task(db: AsyncSession, task: schemas.TaskCreate, user_id: 
     return db_task
 
 async def delete_task(db: AsyncSession, task_id: int, user_id: str):
-    """Асинхронно удалить задачу."""
+    """Асинхронно удалить задачу (используется для кнопки с корзиной)."""
     db_task = await get_task(db, task_id, user_id)
     if db_task:
         await db.delete(db_task)
@@ -73,29 +73,31 @@ async def update_task_progress(db: AsyncSession, task: models.Task, time_spent_t
     """Асинхронно обновить прогресс для задачи с таймером."""
     task.time_spent_today = time_spent_today
     
+    # Если цель достигнута, обновляем стрик и статус
     if task.time_spent_today >= task.goal:
-        _update_streak_logic(task) # Используем общую функцию
+        _update_streak_logic(task)
         task.is_completed = True
             
     await db.commit()
     await db.refresh(task)
     return task
 
-# --- НОВАЯ ФУНКЦИЯ ДЛЯ ЧЕКЛИСТОВ ---
+# --- ИСПРАВЛЕННАЯ ФУНКЦИЯ ДЛЯ ЧЕКЛИСТОВ С ЛОГИКОЙ УДАЛЕНИЯ ---
 async def toggle_checklist_task(db: AsyncSession, task: models.Task):
-    """Переключает статус выполнения для задачи-чеклиста и обновляет стрик."""
-    today = date.today()
-    
-    # Не даем снимать галочку в тот же день
-    if task.is_completed and task.last_completed_date == today:
-        return task # Возвращаем без изменений
-
-    task.is_completed = not task.is_completed
-    
-    if task.is_completed:
-        _update_streak_logic(task) # Обновляем стрик при установке галочки
-    # При снятии галочки (is_completed=False) стрик не трогаем, просто меняем статус
-
+    """
+    Отмечает задачу-чеклист как выполненную, обновляет стрик, а затем УДАЛЯЕТ задачу.
+    """
+    # 1. Обновляем стрик, так как задача выполняется
+    _update_streak_logic(task)
+    task.is_completed = True # Формально отмечаем как выполненную
     await db.commit()
-    await db.refresh(task)
-    return task
+
+    # 2. Сохраняем копию объекта перед удалением, чтобы вернуть данные на фронт
+    task_to_return = schemas.Task.from_orm(task) 
+
+    # 3. Удаляем задачу из базы данных
+    await db.delete(task)
+    await db.commit()
+
+    # 4. Возвращаем данные удаленной задачи
+    return task_to_return
