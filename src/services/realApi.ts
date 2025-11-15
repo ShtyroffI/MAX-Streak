@@ -1,6 +1,6 @@
 // Здесь будут жить реальные сетевые запросы к вашему бэкенду
 
-const API_URL = "https://95cfptcz-8000.euv.devtunnels.ms";
+const API_URL = "https://95cpfcz2-8000.euw.devtunnels.ms";
 
 // Эта функция остается для запросов, которые возвращают JSON
 const request = async (url: string, options: RequestInit = {}) => {
