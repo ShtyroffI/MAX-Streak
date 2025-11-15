@@ -1,7 +1,8 @@
-// Здесь будут жить реальные сетевые запросы к вашему бэкенду
+// src/services/realApi.ts
 
-const API_URL = "https://95cpfcz2-8000.euw.devtunnels.ms";
+const API_URL = "https://95cpfcz2-8000.euw.devtunnels.ms"; // Убедитесь, что это ваша актуальная ссылка
 
+// Универсальная функция запроса. Исправлена, чтобы не падать на пустых ответах.
 const request = async (url: string, options: RequestInit = {}) => {
     const response = await fetch(url, options);
     if (!response.ok) {
@@ -9,9 +10,8 @@ const request = async (url: string, options: RequestInit = {}) => {
         console.error(`HTTP error! status: ${response.status}`, errorBody);
         throw new Error(`Network response was not ok for url: ${url}`);
     }
-    // Проверяем, есть ли у ответа тело, прежде чем парсить JSON
-    if (response.status === 204) {
-        return null; // Для DELETE запросов
+    if (response.status === 204) { // Код "No Content" для DELETE
+        return null;
     }
     return response.json();
 };
@@ -24,20 +24,28 @@ export const authenticateAndGetData = async (initData: string) => {
     });
 };
 
-// ОБНОВЛЕНО: addTask теперь принимает тип задачи и цель
-export const addTask = async (text: string, task_type: 'timer' | 'checklist', goal: number, authToken: string) => {
+// ИСПРАВЛЕНО: addTask теперь принимает тип и правильно формирует тело запроса
+export const addTask = async (text: string, task_type: 'timer' | 'checklist', goalInMinutes: number, authToken: string) => {
+    const body: { text: string; task_type: string; goal?: number } = {
+        text,
+        task_type,
+    };
+    if (task_type === 'timer') {
+        body.goal = goalInMinutes * 60; // Переводим минуты в секунды
+    }
+
     return request(`${API_URL}/tasks/`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${authToken}`,
         },
-        // Отправляем новые данные на бэкенд
-        body: JSON.stringify({ text, task_type, goal: goal * 60 }), // goal в секундах
+        body: JSON.stringify(body),
     });
 };
 
 export const deleteTask = async (id: number, authToken: string) => {
+    // Эта функция уже была исправлена для обработки 204, оставляем как есть
     const response = await fetch(`${API_URL}/tasks/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${authToken}` },
@@ -65,12 +73,10 @@ export const syncTask = async (id: number, timeSpent: number, authToken: string)
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify({ time_spent_today: timeSpent }),
+        body: JSON.stringify({ time_spent_today: Math.floor(timeSpent) }),
     });
 };
 
-export const getTasks = async (authToken: string) => {
-    return request(`${API_URL}/tasks/`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-    });
-};
+// getTasks не существует, но authenticateAndGetData делает то же самое
+// Оставляем это на случай, если понадобится отдельная функция
+// export const getTasks = ...

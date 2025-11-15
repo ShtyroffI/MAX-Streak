@@ -1,7 +1,8 @@
+// src/components/TaskItem.tsx
+
 import { Trash2, Play, Pause, Target, Circle, CheckCircle2 } from 'lucide-react';
 import { Task } from './Tasks';
 import { useState } from 'react';
-import { Input } from './ui/input';
 
 interface TaskItemProps {
   task: Task;
@@ -30,32 +31,20 @@ export function TaskItem({ task, onToggleTimer, onToggleChecklist, onUpdateGoal,
   return (
     <div className="bg-zinc-900 rounded-lg p-4">
       <div className="flex items-center gap-3">
-        {/* УСЛОВНЫЙ РЕНДЕРИНГ КНОПКИ */}
         {task.task_type === 'timer' ? (
-          <button
-            onClick={() => onToggleTimer(task.id)}
-            className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${task.isRunning ? 'bg-orange-500 hover:bg-orange-600' : 'bg-zinc-800 hover:bg-zinc-700'}`}
-          >
+          <button onClick={() => onToggleTimer(task.id)} className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${task.isRunning ? 'bg-orange-500 hover:bg-orange-600' : 'bg-zinc-800 hover:bg-zinc-700'}`}>
             {task.isRunning ? <Pause className="w-5 h-5 text-white" /> : <Play className="w-5 h-5 text-white ml-0.5" />}
           </button>
         ) : (
-          <button
-            onClick={() => onToggleChecklist(task.id)}
-            className="w-12 h-12 flex items-center justify-center flex-shrink-0"
-          >
+          <button onClick={() => onToggleChecklist(task.id)} className="w-12 h-12 flex items-center justify-center flex-shrink-0">
             {task.is_completed ? <CheckCircle2 className="w-7 h-7 text-green-500" /> : <Circle className="w-7 h-7 text-zinc-500" />}
           </button>
         )}
-
         <div className="flex-1 min-w-0">
-          <p className={`text-white mb-1 truncate ${task.is_completed && 'line-through text-zinc-500'}`}>{task.text}</p>
-
-          {/* УСЛОВНЫЙ РЕНДЕРИНГ ИНФОРМАЦИИ О ВРЕМЕНИ */}
+          <p className={`text-white mb-1 truncate ${task.is_completed ? 'line-through text-zinc-500' : ''}`}>{task.text}</p>
           {task.task_type === 'timer' && (
             <div className="flex items-center gap-3 text-sm">
-              <span className={`font-mono ${task.completed_today ? 'text-green-500' : 'text-zinc-400'}`}>
-                {formatTime(task.timeSpent)}
-              </span>
+              <span className={`font-mono ${task.is_completed ? 'text-green-500' : 'text-zinc-400'}`}>{formatTime(task.timeSpent)}</span>
               <span className="text-zinc-600">/</span>
               <button onClick={() => setEditingGoal(true)} className="text-zinc-500 hover:text-zinc-300 flex items-center gap-1">
                 <Target className="w-3 h-3" />
@@ -64,19 +53,13 @@ export function TaskItem({ task, onToggleTimer, onToggleChecklist, onUpdateGoal,
             </div>
           )}
         </div>
-
         <button onClick={() => onDelete(task.id)} className="text-zinc-500 hover:text-red-500 transition-colors">
           <Trash2 className="w-5 h-5" />
         </button>
       </div>
-
-      {/* УСЛОВНЫЙ РЕНДЕРИНГ ПРОГРЕСС-БАРА */}
       {task.task_type === 'timer' && (
         <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden mt-3">
-          <div
-            className={`h-full transition-all ${task.completed_today ? 'bg-green-500' : 'bg-orange-500'}`}
-            style={{ width: `${Math.min(progress, 100)}%` }}
-          />
+          <div className={`h-full transition-all ${task.is_completed ? 'bg-green-500' : 'bg-orange-500'}`} style={{ width: `${Math.min(progress, 100)}%` }} />
         </div>
       )}
     </div>

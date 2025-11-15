@@ -1,12 +1,14 @@
+// src/components/Tasks.tsx
+
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { TaskItem } from './TaskItem';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { Switch } from './ui/switch'; // Предполагается, что у вас есть компонент Switch
-import { Label } from './ui/label';   // и Label из shadcn/ui
+import { Switch } from './ui/switch';
+import { Label } from './ui/label';
 
-// ОБНОВЛЕННЫЙ ИНТЕРФЕЙС
+// ИСПРАВЛЕННЫЙ ИНТЕРФЕЙС: убираем completed_today
 export interface Task {
   id: number;
   text: string;
@@ -15,35 +17,38 @@ export interface Task {
   goal: number;
   streak: number;
   longest_streak: number;
-  completed_today: boolean;
+  // Локальные поля для UI
   timeSpent: number;
   isRunning: boolean;
 }
 
 interface TasksProps {
   tasks: Task[];
+  isSubmitting: boolean;
   onAddTask: (text: string, isTimer: boolean, goalMins: number) => void;
   onDeleteTask: (id: number) => void;
   onToggleTimer: (id: number) => void;
-  onToggleChecklist: (id: number) => void; // Новый обработчик
+  onToggleChecklist: (id: number) => void;
   onUpdateGoal: (id: number, minutes: number) => void;
 }
 
 export function Tasks({
   tasks,
+  isSubmitting,
   onAddTask,
   onDeleteTask,
   onToggleTimer,
-  onToggleChecklist, // Новый
+  onToggleChecklist,
   onUpdateGoal,
 }: TasksProps) {
   const [newTaskText, setNewTaskText] = useState('');
-  const [isTimerTask, setIsTimerTask] = useState(true);
+  const [isTimerTask, setIsTimerTask] = useState(true); // По умолчанию - таймер
   const [goalMinutes, setGoalMinutes] = useState(30);
 
   const handleAddTaskClick = () => {
     if (!newTaskText.trim()) return;
-    onAddTask(newTaskText, isTimerTask, goalMinutes);
+    const goal = isTimerTask ? goalMinutes : 0;
+    onAddTask(newTaskText, isTimerTask, goal);
     setNewTaskText('');
   };
 
@@ -54,22 +59,19 @@ export function Tasks({
   return (
     <div className="min-h-screen px-4 pt-6">
       <h1 className="text-xl font-medium mb-2">Мои задачи</h1>
-
       <div className="mb-6 bg-zinc-900 rounded-lg p-4">
         <p className="text-zinc-400 text-sm">Всего в фокусе сегодня</p>
         <p className="text-2xl text-orange-500">
           {Math.floor(totalTimeToday / 3600)}ч {Math.floor((totalTimeToday % 3600) / 60)}м
         </p>
       </div>
-
-      {/* ОБНОВЛЕННЫЙ БЛОК СОЗДАНИЯ ЗАДАЧИ */}
       <div className="mb-6 flex flex-col gap-3 bg-zinc-900 rounded-lg p-3">
         <Input
           value={newTaskText}
           onChange={(e) => setNewTaskText(e.target.value)}
           placeholder="Название новой задачи..."
           className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-          disabled={isSubmitting} // Блокируем ввод во время отправки
+          disabled={isSubmitting}
         />
         <div className="flex justify-between items-center gap-2">
           <div className="flex items-center gap-2">
@@ -96,19 +98,16 @@ export function Tasks({
           <Button
             onClick={handleAddTaskClick}
             className="bg-orange-500 hover:bg-orange-600 text-white"
-            disabled={isSubmitting || !newTaskText.trim()} // Блокируем кнопку
+            disabled={isSubmitting || !newTaskText.trim()}
           >
             <Plus className="w-5 h-5" />
           </Button>
         </div>
       </div>
-
-
       <div className="space-y-3">
         {tasks.length === 0 ? (
           <div className="text-center py-12 text-zinc-500">
-            <p>Задач пока нет</p>
-            <p className="text-sm">Начните свой первый стрик!</p>
+            <p>Задач пока нет</p><p className="text-sm">Начните свой первый стрик!</p>
           </div>
         ) : (
           tasks.map((task) => (

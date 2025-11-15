@@ -3,7 +3,8 @@ import { Profile } from './components/Profile';
 import { Tasks, Task } from './components/Tasks';
 import { Home } from './components/Home';
 import { Home as HomeIcon, ListTodo, User } from 'lucide-react';
-import api from './services/api';
+// ИСПРАВЛЕНИЕ 1: Импортируем все функции из api под псевдонимом 'api'
+import * as api from './services/realApi';
 
 // Объявляем глобальный объект window.WebApp для TypeScript
 declare global {
@@ -57,7 +58,7 @@ export default function App() {
       }
     };
 
-    // Надежная функция, которая дожидается готовности WebApp
+    // Надежная функция, которая дожидается готовности WebApp (сохранена из вашего кода)
     const waitForWebApp = (): Promise<string> => {
       return new Promise((resolve) => {
         if (window.WebApp && window.WebApp.initData) {
@@ -129,21 +130,13 @@ export default function App() {
   // --- ФУНКЦИИ-ОБРАБОТЧИКИ ДЕЙСТВИЙ ПОЛЬЗОВАТЕЛЯ ---
 
   const handleAddTask = async (text: string, isTimer: boolean, goalMins: number) => {
-    console.log('handleAddTask called with:', { text, isTimer, goalMins });
-
     if (!text.trim() || !authToken || isSubmitting) {
-      console.warn('AddTask blocked:', { text, authToken, isSubmitting });
       return;
     }
     try {
       setIsSubmitting(true);
       const task_type = isTimer ? 'timer' : 'checklist';
-      // Для чеклиста goal не важен, но API может его требовать. Отправляем 0.
-      const goalForApi = isTimer ? goalMins : 0;
-
-      const newTaskFromServer = await api.addTask(text, task_type, goalForApi, authToken);
-      console.log('Received new task from server:', newTaskFromServer);
-
+      const newTaskFromServer = await api.addTask(text, task_type, goalMins, authToken);
       setTasks(prevTasks => [...prevTasks, enrichTask(newTaskFromServer)]);
       window.WebApp?.HapticFeedback.notificationOccurred('success');
     } catch (error) {
@@ -153,7 +146,6 @@ export default function App() {
       setIsSubmitting(false);
     }
   };
-
 
   const handleDeleteTask = async (id: number) => {
     if (!authToken || isSubmitting) return;
@@ -191,8 +183,7 @@ export default function App() {
           task.id === id
             ? {
               ...enrichTask(updatedTaskFromServer),
-              timeSpent: timeToSend,
-              isRunning: false
+              isRunning: false // Явно останавливаем таймер после синхронизации
             }
             : task
         ));
@@ -202,22 +193,17 @@ export default function App() {
     }
   };
 
+  // Этот обработчик теперь будет вызывать правильную функцию api.toggleTask
   const handleToggleChecklist = async (id: number) => {
-    console.log('handleToggleChecklist called for id:', id);
-
     if (!authToken || isSubmitting) {
-      console.warn('ToggleChecklist blocked:', { authToken, isSubmitting });
       return;
     }
     try {
       setIsSubmitting(true);
       window.WebApp?.HapticFeedback.impactOccurred('light');
 
-      // Ждем ответа от сервера
       const updatedTask = await api.toggleTask(id, authToken);
-      console.log('Received updated task from server:', updatedTask);
 
-      // Обновляем задачу в общем списке, используя функциональную форму
       setTasks(prevTasks =>
         prevTasks.map(task =>
           task.id === id ? enrichTask(updatedTask) : task
@@ -230,8 +216,6 @@ export default function App() {
       setIsSubmitting(false);
     }
   };
-
-
 
   const handleUpdateGoal = (id: number, minutes: number) => {
     console.log("Update goal logic to be implemented");
