@@ -224,20 +224,37 @@ export default function App() {
     if (!authToken || isSubmitting) {
       return;
     }
+
+    // Оптимистичное обновление: сразу убираем задачу из списка для мгновенной реакции UI.
+    // Сохраняем ее на случай, если запрос не удастся и ее придется вернуть.
+    const taskToRemove = tasks.find(t => t.id === id);
+    if (!taskToRemove) return;
+    setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
+
     try {
       setIsSubmitting(true);
-      window.WebApp?.HapticFeedback.impactOccurred('light');
 
-      const updatedTask = await api.toggleTask(id, authToken);
+      // Отправляем запрос на бэкенд. Он обновит стрик и удалит задачу в БД.
+      await api.toggleTask(id, authToken);
 
-      setTasks(prevTasks =>
-        prevTasks.map(task =>
-          task.id === id ? enrichTask(updatedTask) : task
-        )
-      );
+      // Если все успешно, вызываем HapticFeedback
+      window.WebApp?.HapticFeedback.notificationOccurred('success');
+
+      // TODO: Здесь нужно будет обновить глобальные счетчики (общее количество выполненных, стрик и т.д.)
+      // на основе данных, которые мог бы вернуть toggleTask, если бы он их возвращал.
+      // Пока просто удаляем.
+
     } catch (error) {
-      console.error("Failed to toggle checklist task:", error);
+      console.error("Failed to complete and delete task:", error);
+
+      // Если произошла ошибка, возвращаем задачу обратно в список
+      setTasks(prevTasks => [...prevTasks, taskToRemove]);
+
+      if (window.WebApp?.showAlert) {
+        window.WebApp.showAlert("Не удалось выполнить задачу.");
+      }
       window.WebApp?.HapticFeedback.notificationOccurred('error');
+
     } finally {
       setIsSubmitting(false);
     }

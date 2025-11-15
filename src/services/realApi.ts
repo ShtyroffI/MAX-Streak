@@ -25,7 +25,6 @@ export const authenticateAndGetData = async (initData: string) => {
 };
 
 export const addTask = async (text: string, task_type: 'timer' | 'checklist', goalInMinutes: number, authToken: string) => {
-    // Создаем базовый объект для отправки
     const body: { text: string; task_type: string; goal?: number } = {
         text,
         task_type,
@@ -33,12 +32,10 @@ export const addTask = async (text: string, task_type: 'timer' | 'checklist', go
 
     // Добавляем поле goal ТОЛЬКО если это задача с таймером
     if (task_type === 'timer') {
-        // Гарантируем, что goalInMinutes является числом. Если нет, ставим 30 по умолчанию.
         const goal = (typeof goalInMinutes === 'number' && !isNaN(goalInMinutes)) ? goalInMinutes : 30;
         body.goal = goal * 60; // Переводим минуты в секунды
     }
 
-    // Эта функция request уже умеет обрабатывать ошибки и выбрасывать исключение
     return request(`${API_URL}/tasks/`, {
         method: 'POST',
         headers: {
@@ -48,7 +45,6 @@ export const addTask = async (text: string, task_type: 'timer' | 'checklist', go
         body: JSON.stringify(body),
     });
 };
-
 export const deleteTask = async (id: number, authToken: string) => {
     // Эта функция уже была исправлена для обработки 204, оставляем как есть
     const response = await fetch(`${API_URL}/tasks/${id}`, {
