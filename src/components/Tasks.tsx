@@ -67,9 +67,9 @@ export function Tasks({
         <Input
           value={newTaskText}
           onChange={(e) => setNewTaskText(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleAddTaskClick()}
           placeholder="Название новой задачи..."
           className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+          disabled={isSubmitting} // Блокируем ввод во время отправки
         />
         <div className="flex justify-between items-center gap-2">
           <div className="flex items-center gap-2">
@@ -77,6 +77,7 @@ export function Tasks({
               id="task-type-switch"
               checked={isTimerTask}
               onCheckedChange={setIsTimerTask}
+              disabled={isSubmitting}
             />
             <Label htmlFor="task-type-switch" className="text-sm text-zinc-400">Таймер</Label>
           </div>
@@ -87,15 +88,21 @@ export function Tasks({
                 value={goalMinutes}
                 onChange={(e) => setGoalMinutes(Math.max(1, parseInt(e.target.value) || 1))}
                 className="w-16 h-8 text-sm bg-zinc-800 border-zinc-700"
+                disabled={isSubmitting}
               />
               <span className="text-sm text-zinc-400">мин</span>
             </div>
           )}
-          <Button onClick={handleAddTaskClick} className="bg-orange-500 hover:bg-orange-600 text-white">
+          <Button
+            onClick={handleAddTaskClick}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+            disabled={isSubmitting || !newTaskText.trim()} // Блокируем кнопку
+          >
             <Plus className="w-5 h-5" />
           </Button>
         </div>
       </div>
+
 
       <div className="space-y-3">
         {tasks.length === 0 ? (

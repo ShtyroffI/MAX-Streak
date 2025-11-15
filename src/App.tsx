@@ -129,11 +129,21 @@ export default function App() {
   // --- ФУНКЦИИ-ОБРАБОТЧИКИ ДЕЙСТВИЙ ПОЛЬЗОВАТЕЛЯ ---
 
   const handleAddTask = async (text: string, isTimer: boolean, goalMins: number) => {
-    if (!text.trim() || !authToken || isSubmitting) return;
+    console.log('handleAddTask called with:', { text, isTimer, goalMins });
+
+    if (!text.trim() || !authToken || isSubmitting) {
+      console.warn('AddTask blocked:', { text, authToken, isSubmitting });
+      return;
+    }
     try {
       setIsSubmitting(true);
       const task_type = isTimer ? 'timer' : 'checklist';
-      const newTaskFromServer = await api.addTask(text, task_type, goalMins, authToken);
+      // Для чеклиста goal не важен, но API может его требовать. Отправляем 0.
+      const goalForApi = isTimer ? goalMins : 0;
+
+      const newTaskFromServer = await api.addTask(text, task_type, goalForApi, authToken);
+      console.log('Received new task from server:', newTaskFromServer);
+
       setTasks(prevTasks => [...prevTasks, enrichTask(newTaskFromServer)]);
       window.WebApp?.HapticFeedback.notificationOccurred('success');
     } catch (error) {
@@ -143,6 +153,7 @@ export default function App() {
       setIsSubmitting(false);
     }
   };
+
 
   const handleDeleteTask = async (id: number) => {
     if (!authToken || isSubmitting) return;
@@ -192,18 +203,34 @@ export default function App() {
   };
 
   const handleToggleChecklist = async (id: number) => {
-    if (!authToken || isSubmitting) return;
+    console.log('handleToggleChecklist called for id:', id);
+
+    if (!authToken || isSubmitting) {
+      console.warn('ToggleChecklist blocked:', { authToken, isSubmitting });
+      return;
+    }
     try {
       setIsSubmitting(true);
       window.WebApp?.HapticFeedback.impactOccurred('light');
+
+      // Ждем ответа от сервера
       const updatedTask = await api.toggleTask(id, authToken);
-      setTasks(prev => prev.map(t => t.id === id ? enrichTask(updatedTask) : t));
+      console.log('Received updated task from server:', updatedTask);
+
+      // Обновляем задачу в общем списке, используя функциональную форму
+      setTasks(prevTasks =>
+        prevTasks.map(task =>
+          task.id === id ? enrichTask(updatedTask) : task
+        )
+      );
     } catch (error) {
       console.error("Failed to toggle checklist task:", error);
+      window.WebApp?.HapticFeedback.notificationOccurred('error');
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
 
   const handleUpdateGoal = (id: number, minutes: number) => {
@@ -226,10 +253,12 @@ export default function App() {
         {currentTab === 'profile' && <Profile userData={userData} tasks={tasks} />}
         {currentTab === 'tasks' && (
           <Tasks
+            isSubmitting={isSubmitting}
             tasks={tasks}
             onAddTask={handleAddTask}
             onDeleteTask={handleDeleteTask}
             onToggleTimer={handleToggleTimer}
+            onToggleChecklist={handleToggleChecklist}
             onUpdateGoal={handleUpdateGoal}
           />
         )}
