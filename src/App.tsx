@@ -130,22 +130,48 @@ export default function App() {
   // --- ФУНКЦИИ-ОБРАБОТЧИКИ ДЕЙСТВИЙ ПОЛЬЗОВАТЕЛЯ ---
 
   const handleAddTask = async (text: string, isTimer: boolean, goalMins: number) => {
-    if (!text.trim() || !authToken || isSubmitting) {
+    if (!text.trim() || !authToken) {
+      // Если кнопка как-то нажалась, хотя не должна была, просто ничего не делаем
       return;
     }
+    // Проверяем, не идет ли уже отправка
+    if (isSubmitting) {
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       const task_type = isTimer ? 'timer' : 'checklist';
+
+      // Вызываем нашу новую, надежную API-функцию
       const newTaskFromServer = await api.addTask(text, task_type, goalMins, authToken);
+
+      // Если все успешно, обновляем состояние
       setTasks(prevTasks => [...prevTasks, enrichTask(newTaskFromServer)]);
       window.WebApp?.HapticFeedback.notificationOccurred('success');
+
     } catch (error) {
-      console.error("Failed to add task:", error);
+      // --- ВОТ ГЛАВНОЕ ИЗМЕНЕНИЕ ---
+      // Если в api.addTask или где-то еще произошла ошибка, мы ее поймаем
+      // и покажем пользователю.
+      console.error("!!! ОШИБКА при создании задачи:", error);
+
+      // Показываем нативное уведомление об ошибке
+      if (window.WebApp?.showAlert) {
+        window.WebApp.showAlert("Не удалось создать задачу. Попробуйте снова.");
+      } else {
+        alert("Не удалось создать задачу. Попробуйте снова.");
+      }
       window.WebApp?.HapticFeedback.notificationOccurred('error');
+
     } finally {
+      // Этот блок выполнится ВСЕГДА, даже если была ошибка,
+      // и разблокирует интерфейс.
       setIsSubmitting(false);
     }
   };
+
+
 
   const handleDeleteTask = async (id: number) => {
     if (!authToken || isSubmitting) return;

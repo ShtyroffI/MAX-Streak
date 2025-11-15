@@ -47,9 +47,14 @@ export function Tasks({
 
   const handleAddTaskClick = () => {
     if (!newTaskText.trim()) return;
-    const goal = isTimerTask ? goalMinutes : 0;
+
+    // Гарантируем, что goalMinutes всегда является числом, даже если поле пустое
+    const goal = isTimerTask ? (Number(goalMinutes) || 30) : 0;
+
     onAddTask(newTaskText, isTimerTask, goal);
     setNewTaskText('');
+    // Сбрасываем цель на значение по умолчанию после добавления
+    setGoalMinutes(30);
   };
 
   const totalTimeToday = tasks
