@@ -15,10 +15,11 @@ interface UserData {
   avatar: string;
 }
 
-// Вспомогательная функция для "обогащения" задач с бэкенда
-const enrichTask = (task: any): Task => ({
-  ...task,
-  timeSpent: typeof task.timeSpent === 'number' ? task.timeSpent : 0,
+// ИСПРАВЛЕНИЕ 1: Правильно читаем данные с бэкенда
+const enrichTask = (taskFromServer: any): Task => ({
+  ...taskFromServer,
+  // Читаем time_spent_today с сервера, если его нет - ставим 0
+  timeSpent: typeof taskFromServer.time_spent_today === 'number' ? taskFromServer.time_spent_today : 0,
   isRunning: false,
 });
 
@@ -44,7 +45,7 @@ export default function App() {
         const response = await api.authenticateAndGetData(initDataString);
 
         setUserData(response.user);
-        // ИСПРАВЛЕНИЕ 1: Обогащаем задачи при первой загрузке
+        // Теперь enrichTask работает правильно
         setTasks(response.tasks.map(enrichTask));
         setAuthToken(response.auth_token);
 
@@ -73,13 +74,11 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // ИСПРАВЛЕНИЕ 2: Обновляем `addTask`, чтобы не перезапрашивать весь список
   const handleAddTask = async (text: string) => {
     if (!authToken) return;
     try {
-      // Бэкенд должен вернуть созданную задачу
       const newTaskFromServer = await api.addTask(text, 1800, authToken);
-      // Добавляем новую задачу в конец списка, обогатив ее
+      // Применяем enrichTask и к новым задачам
       setTasks(prevTasks => [...prevTasks, enrichTask(newTaskFromServer)]);
     } catch (error) {
       console.error("Failed to add task:", error);
@@ -88,17 +87,14 @@ export default function App() {
 
   const handleDeleteTask = async (id: number) => {
     if (!authToken) return;
-    // Оптимистичное обновление - сразу удаляем из UI
     setTasks(tasks.filter(t => t.id !== id));
     try {
       await api.deleteTask(id, authToken);
     } catch (error) {
       console.error("Failed to delete task:", error);
-      // В случае ошибки, нужно вернуть задачу обратно (для хакатона можно опустить)
     }
   };
 
-  // ИСПРАВЛЕНИЕ 3: Обновляем `toggleTimer`, чтобы он сохранял `timeSpent`
   const handleToggleTimer = async (id: number) => {
     const taskToToggle = tasks.find(t => t.id === id);
     if (!taskToToggle) return;
@@ -114,16 +110,13 @@ export default function App() {
     if (isStopping && authToken) {
       const timeToSend = typeof taskToToggle.timeSpent === 'number' ? taskToToggle.timeSpent : 0;
       try {
-        // Бэкенд должен вернуть обновленную задачу со свежим стриком
         const updatedTaskFromServer = await api.syncTask(id, Math.floor(timeToSend), authToken);
-        // Точечно обновляем стрик и статус выполнения у нашей задачи в состоянии
+
         setTasks(prevTasks => prevTasks.map(task =>
           task.id === id
             ? {
-              ...task,
-              streak: updatedTaskFromServer.streak,
-              longest_streak: updatedTaskFromServer.longest_streak,
-              completed_today: updatedTaskFromServer.completed_today,
+              // ИСПРАВЛЕНИЕ 2: Применяем enrichTask к ответу от sync, но сохраняем isRunning
+              ...enrichTask(updatedTaskFromServer),
               isRunning: false // Явно выключаем таймер
             }
             : task
@@ -160,27 +153,18 @@ export default function App() {
           />
         )}
       </div>
-      {/* Навигация */}
+      {/* Навигация без изменений */}
       <div className="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800">
         <div className="max-w-2xl mx-auto flex">
-          <button
-            onClick={() => setCurrentTab('profile')}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'profile' ? 'text-orange-500' : 'text-zinc-400'}`}
-          >
+          <button onClick={() => setCurrentTab('profile')} className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'profile' ? 'text-orange-500' : 'text-zinc-400'}`}>
             <User className="w-6 h-6" />
             <span className="text-xs">Профиль</span>
           </button>
-          <button
-            onClick={() => setCurrentTab('home')}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'home' ? 'text-orange-500' : 'text-zinc-400'}`}
-          >
+          <button onClick={() => setCurrentTab('home')} className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'home' ? 'text-orange-500' : 'text-zinc-400'}`}>
             <HomeIcon className="w-6 h-6" />
             <span className="text-xs">Главная</span>
           </button>
-          <button
-            onClick={() => setCurrentTab('tasks')}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'tasks' ? 'text-orange-500' : 'text-zinc-400'}`}
-          >
+          <button onClick={() => setCurrentTab('tasks')} className={`flex-1 flex flex-col items-center gap-1 py-3 ${currentTab === 'tasks' ? 'text-orange-500' : 'text-zinc-400'}`}>
             <ListTodo className="w-6 h-6" />
             <span className="text-xs">Таски</span>
           </button>
