@@ -46,22 +46,26 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
 
 @app.post("/auth/max", response_model=schemas.AuthResponse)
 async def validate_and_authenticate(init_data: schemas.InitData, db: AsyncSession = Depends(get_db)):
-    # ... (этот эндпоинт без изменений)
     validation_data = security.validate_init_data(init_data.raw_init_data)
     if not validation_data or "user" not in validation_data:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid hash or user data missing",
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid hash or user data missing")
+
     user_info = validation_data["user"]
     user_id = str(user_info.get("id"))
+    
+    # --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
+    await crud.get_or_create_user(db, user_id=user_id) # Гарантируем, что юзер есть в БД
     access_token = security.create_access_token(data={"sub": user_id})
     user_tasks = await crud.get_tasks_by_user(db, user_id=user_id)
+    user_stats = await crud.get_user_stats(db, user_id=user_id, tasks=user_tasks)
+    # -----------------------
+
     user_obj = schemas.User(
         id=user_id,
         name=f"{user_info.get('first_name', '')} {user_info.get('last_name', '')}".strip(),
         avatar=user_info.get('photo_url')
     )
-    return {"user": user_obj, "tasks": user_tasks, "auth_token": access_token}
+    return {"user": user_obj, "tasks": user_tasks, "stats": user_stats, "auth_token": access_token}
 
 @app.get("/tasks/", response_model=List[schemas.Task])
 async def read_tasks(user_id: str = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
@@ -82,7 +86,7 @@ async def delete_task(task_id: int, user_id: str = Depends(get_current_user_id),
         raise HTTPException(status_code=404, detail="Task not found")
     return None
 
-@app.put("/tasks/{task_id}/sync", response_model=schemas.Task)
+@app.put("/tasks/{task_id}/sync", response_model=schemas.TaskUpdateResponse)
 async def sync_task_progress(
     task_id: int, 
     sync_data: schemas.TaskSync,
@@ -92,32 +96,33 @@ async def sync_task_progress(
     db_task = await crud.get_task(db, task_id=task_id, user_id=user_id)
     if db_task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    
-    # --- ЗАЩИТА ОТ НЕПРАВИЛЬНОГО ТИПА ЗАДАЧИ ---
     if db_task.task_type != "timer":
-        raise HTTPException(status_code=400, detail="Sync is only available for timer tasks.")
+        raise HTTPException(status_code=400, detail="Sync is only for timer tasks.")
+    
+    updated_task = await crud.update_task_progress(db, db_task, sync_data.time_spent_today)
+    
+    # --- ВОЗВРАЩАЕМ ОБНОВЛЕННУЮ СТАТИСТИКУ ---
+    user_tasks = await crud.get_tasks_by_user(db, user_id=user_id)
+    user_stats = await crud.get_user_stats(db, user_id=user_id, tasks=user_tasks)
+    return {"task": updated_task, "stats": user_stats}
+    # ----------------------------------------
 
-    updated_task = await crud.update_task_progress(
-        db=db, 
-        task=db_task, 
-        time_spent_today=sync_data.time_spent_today
-    )
-    return updated_task
-
-# --- НОВЫЙ ЭНДПОИНТ ДЛЯ ЧЕКЛИСТОВ ---
-@app.put("/tasks/{task_id}/toggle", response_model=schemas.Task)
+@app.put("/tasks/{task_id}/toggle", response_model=schemas.TaskUpdateResponse)
 async def toggle_task_completion(
     task_id: int,
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
-    """Отмечает задачу-чеклист как выполненную/невыполненную."""
     db_task = await crud.get_task(db, task_id=task_id, user_id=user_id)
     if db_task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-
     if db_task.task_type != "checklist":
-        raise HTTPException(status_code=400, detail="Toggle is only available for checklist tasks.")
+        raise HTTPException(status_code=400, detail="Toggle is only for checklist tasks.")
 
-    updated_task = await crud.toggle_checklist_task(db=db, task=db_task)
-    return updated_task
+    deleted_task_data = await crud.toggle_checklist_task(db=db, task=db_task)
+    
+    # --- ВОЗВРАЩАЕМ ОБНОВЛЕННУЮ СТАТИСТИКУ ---
+    user_tasks = await crud.get_tasks_by_user(db, user_id=user_id)
+    user_stats = await crud.get_user_stats(db, user_id=user_id, tasks=user_tasks)
+    return {"task": deleted_task_data, "stats": user_stats}
+    # ----------------------------------------

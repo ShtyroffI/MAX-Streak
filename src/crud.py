@@ -4,6 +4,63 @@ from sqlalchemy.future import select
 from . import models, schemas
 from datetime import date, timedelta
 
+
+async def get_or_create_user(db: AsyncSession, user_id: str):
+    """Находит пользователя по user_id или создает нового."""
+    query = select(models.User).filter(models.User.user_id == user_id)
+    result = await db.execute(query)
+    user = result.scalar_one_or_none()
+    if not user:
+        user = models.User(user_id=user_id)
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    return user
+
+async def get_user_stats(db: AsyncSession, user_id: str, tasks: List[models.Task]):
+    """Собирает и возвращает общую статистику пользователя."""
+    user = await get_or_create_user(db, user_id)
+    current_streak = 0
+    longest_streak = 0
+    if tasks:
+        current_streak = max(task.streak for task in tasks)
+        longest_streak = max(task.longest_streak for task in tasks)
+    
+    return schemas.UserStats(
+        total_completed=user.total_completed,
+        current_streak=current_streak,
+        longest_streak=longest_streak
+    )
+
+async def _increment_user_completed_tasks(db: AsyncSession, user_id: str):
+    """Увеличивает счетчик выполненных задач у пользователя."""
+    user = await get_or_create_user(db, user_id)
+    user.total_completed += 1
+    await db.commit()
+
+# --- ОБНОВЛЕННАЯ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ СТРИКОВ ---
+async def _update_streak_logic(db: AsyncSession, task: models.Task):
+    """Обновляет стрик и инкрементирует общий счетчик задач."""
+    today = date.today()
+    if task.last_completed_date == today:
+        return
+
+    yesterday = today - timedelta(days=1)
+    
+    if task.last_completed_date == yesterday:
+        task.streak += 1
+    else:
+        task.streak = 1
+    
+    task.last_completed_date = today
+    
+    if task.streak > task.longest_streak:
+        task.longest_streak = task.streak
+        
+    # Ключевое изменение: инкрементируем общий счетчик
+    await _increment_user_completed_tasks(db, user_id=task.user_id)
+
+
 # --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ СТРИКОВ (чтобы не дублировать код) ---
 def _update_streak_logic(task: models.Task):
     """Обновляет стрик для задачи, которую только что выполнили."""
@@ -72,32 +129,24 @@ async def delete_task(db: AsyncSession, task_id: int, user_id: str):
 async def update_task_progress(db: AsyncSession, task: models.Task, time_spent_today: int):
     """Асинхронно обновить прогресс для задачи с таймером."""
     task.time_spent_today = time_spent_today
-    
-    # Если цель достигнута, обновляем стрик и статус
-    if task.time_spent_today >= task.goal:
-        _update_streak_logic(task)
+    if task.time_spent_today >= task.goal and not task.is_completed:
+        await _update_streak_logic(db, task)
         task.is_completed = True
-            
     await db.commit()
     await db.refresh(task)
     return task
 
-# --- ИСПРАВЛЕННАЯ ФУНКЦИЯ ДЛЯ ЧЕКЛИСТОВ С ЛОГИКОЙ УДАЛЕНИЯ ---
 async def toggle_checklist_task(db: AsyncSession, task: models.Task):
-    """
-    Отмечает задачу-чеклист как выполненную, обновляет стрик, а затем УДАЛЯЕТ задачу.
-    """
-    # 1. Обновляем стрик, так как задача выполняется
-    _update_streak_logic(task)
-    task.is_completed = True # Формально отмечаем как выполненную
+    """Отмечает задачу, обновляет стрик, удаляет задачу."""
+    if task.is_completed:
+        return None # Уже выполнена
+
+    await _update_streak_logic(db, task)
+    task.is_completed = True
     await db.commit()
-
-    # 2. Сохраняем копию объекта перед удалением, чтобы вернуть данные на фронт
-    task_to_return = schemas.Task.from_orm(task) 
-
-    # 3. Удаляем задачу из базы данных
+    
+    task_data_to_return = schemas.Task.from_orm(task)
     await db.delete(task)
     await db.commit()
-
-    # 4. Возвращаем данные удаленной задачи
-    return task_to_return
+    
+    return task_data_to_return
