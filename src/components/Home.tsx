@@ -1,60 +1,63 @@
-import { Flame } from 'lucide-react';
-import { Task } from './Tasks'; // Импортируем общий тип
+// src/components/Home.tsx
 
+import { Task } from './Tasks'; // Убедитесь, что импортируете Task
+
+// --- 1. ОПРЕДЕЛИТЕ ИНТЕРФЕЙС ДЛЯ СТАТИСТИКИ ---
+interface UserStats {
+  total_completed: number;
+  current_streak: number;
+  longest_streak: number;
+}
+
+// --- 2. ОПРЕДЕЛИТЕ ИНТЕРФЕЙС ДЛЯ PROPS КОМПОНЕНТА ---
 interface HomeProps {
   userData: { name: string } | null;
   tasks: Task[];
+  stats: UserStats; // <-- Добавляем новое свойство
 }
 
-export function Home({ userData, tasks }: HomeProps) {
+// --- 3. ИСПОЛЬЗУЙТЕ НОВЫЙ ИНТЕРФЕЙС ---
+export function Home({ userData, tasks, stats }: HomeProps) {
 
-  // Вычисляем статистику на лету из полученных данных
-  const totalTimeToday = tasks.reduce((sum, task) => sum + task.timeSpent, 0);
-  const completedTasksCount = tasks.filter(task => task.completed_today).length;
-
-  // Для общего стрика нужна более сложная логика на бэкенде,
-  // пока можем показать стрик самой "прокачанной" задачи.
-  const mainStreak = tasks.reduce((max, task) => task.streak > max ? task.streak : max, 0);
-  const longestStreakEver = tasks.reduce((max, task) => task.longest_streak > max ? task.longest_streak : max, 0);
+  // Логика подсчета времени остается, так как она нужна для отображения "Сегодня в фокусе"
+  const totalTimeToday = tasks
+    .filter(task => task.task_type === 'timer')
+    .reduce((sum, task) => sum + task.timeSpent, 0);
 
   const formatTime = (seconds: number) => {
-    // Проверка на входе
-    if (isNaN(seconds) || seconds < 0) {
-      seconds = 0;
-    }
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    return { hours, minutes };
+    return `${hours}ч ${minutes}м`;
   };
 
-  const { hours, minutes } = formatTime(totalTimeToday);
-
   return (
-    <div className="min-h-screen flex flex-col items-center pt-16 px-4 text-center">
-      {userData && <h1 className="text-2xl mb-4">Привет, {userData.name}!</h1>}
+    <div className="min-h-screen px-4 pt-6">
+      <h1 className="text-3xl font-bold mb-4">
+        Привет, {userData?.name || 'Гость'}!
+      </h1>
 
-      <div className="flex flex-col items-center mb-8">
-        <Flame className="w-48 h-48 text-orange-500 fill-orange-500" />
-        <div className="mt-4">
-          <span className="text-4xl text-white">{mainStreak} дня</span>
+      <div className="mb-6 bg-zinc-900 rounded-lg p-4">
+        <p className="text-zinc-400 text-sm">Сегодня в фокусе</p>
+        <p className="text-3xl text-orange-500 font-semibold">{formatTime(totalTimeToday)}</p>
+      </div>
+
+      {/* --- 4. ИСПОЛЬЗУЙТЕ ДАННЫЕ ИЗ stats --- */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+        <div className="bg-zinc-900 p-4 rounded-lg">
+          <p className="text-2xl font-bold">{stats.current_streak}</p>
+          <p className="text-sm text-zinc-400">Текущая серия</p>
         </div>
-        <div className="text-center mt-6">
-          <Flame className="w-4 h-4 inline text-orange-500 mr-1" />
-          <span className="text-sm text-zinc-400">Текущая серия</span>
+        <div className="bg-zinc-900 p-4 rounded-lg">
+          <p className="text-2xl font-bold">{stats.longest_streak}</p>
+          <p className="text-sm text-zinc-400">Лучшая серия</p>
+        </div>
+        <div className="bg-zinc-900 p-4 rounded-lg">
+          <p className="text-2xl font-bold">{stats.total_completed}</p>
+          <p className="text-sm text-zinc-400">Всего выполнено</p>
         </div>
       </div>
 
-      <div className="mb-8 text-center">
-        <p className="text-zinc-400 text-sm mb-2">Сегодня в фокусе</p>
-        <p className="text-3xl text-white">
-          {hours}ч {minutes}м
-        </p>
-      </div>
-
-      <div className="text-center space-y-2">
-        <p className="text-zinc-400">Лучшая серия: <span className="text-white">{longestStreakEver} дней</span></p>
-        <p className="text-zinc-400">Всего выполнено: <span className="text-white">{completedTasksCount} задач</span></p>
-      </div>
+      {/* Здесь может быть дополнительный контент для главной страницы */}
     </div>
   );
 }
