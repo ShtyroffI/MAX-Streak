@@ -17,14 +17,21 @@ def get_tasks_by_user(db: Session, user_id: str):
     tasks = db.query(models.Task).filter(models.Task.user_id == user_id).all()
     today = date.today()
     
+    tasks_changed = False
     for task in tasks:
+        # Проверяем, что дата последней синхронизации - это не сегодня
         if task.last_sync_date is None or task.last_sync_date < today:
-            task.time_spent_today = 0
-            task.last_sync_date = today
-    db.commit()
+            tasks_changed = True
+            # --- ИСПРАВЛЕННАЯ ЛОГИКА ---
+            task.time_spent_today = 0      # 1. Сбрасываем прогресс
+            task.last_sync_date = today    # 2. ОБНОВЛЯЕМ ДАТУ, чтобы больше не сбрасывать
+            # ---------------------------
+    
+    # Сохраняем изменения, только если они были
+    if tasks_changed:
+        db.commit()
     
     return tasks
-
 def create_user_task(db: Session, task: schemas.TaskCreate, user_id: str):
     """Создать новую задачу для пользователя."""
     db_task = models.Task(**task.dict(), user_id=user_id)
