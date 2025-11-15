@@ -143,14 +143,15 @@ export default function App() {
 
   const handleDeleteTask = async (id: number) => {
     if (!authToken) return;
-    const originalTasks = tasks;
-    setTasks(tasks.filter(t => t.id !== id));
-    window.WebApp?.HapticFeedback.impactOccurred('medium');
+
     try {
       await api.deleteTask(id, authToken);
+      setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
+
+      window.WebApp?.HapticFeedback.impactOccurred('medium');
+
     } catch (error) {
       console.error("Failed to delete task:", error);
-      setTasks(originalTasks); // Возвращаем задачи в случае ошибки
       window.WebApp?.HapticFeedback.notificationOccurred('error');
     }
   };
