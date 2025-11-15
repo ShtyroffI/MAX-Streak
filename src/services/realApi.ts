@@ -1,9 +1,8 @@
 // Здесь будут жить реальные сетевые запросы к вашему бэкенду
 
-// 1. Указываем ссылку на ваш бэкенд (без слеша в конце)
-const API_URL = "https://95cpfcz2-8000.euw.devtunnels.ms";
+const API_URL = "https://95cfptcz-8000.euv.devtunnels.ms";
 
-// Вспомогательная функция для запросов
+// Эта функция остается для запросов, которые возвращают JSON
 const request = async (url: string, options: RequestInit = {}) => {
     const response = await fetch(url, options);
     if (!response.ok) {
@@ -14,19 +13,13 @@ const request = async (url: string, options: RequestInit = {}) => {
     return response.json();
 };
 
-// 2. ФУНКЦИЯ АУТЕНТИФИКАЦИИ, НАСТРОЕННАЯ НА /auth/max
 export const authenticateAndGetData = async (initData: string) => {
-    // Используем путь /auth/max, как вы и хотели
     return request(`${API_URL}/auth/max`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Используем ключ "raw", как было в нашем ТЗ
         body: JSON.stringify({ raw_init_data: initData }),
     });
 };
-
-// 3. ОБНОВЛЕННЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ЗАДАЧАМИ
-// Они должны принимать JWT-токен, который вернет ваш эндпоинт /auth/max
 
 export const addTask = async (text: string, goal: number, authToken: string) => {
     return request(`${API_URL}/tasks/`, {
@@ -39,29 +32,34 @@ export const addTask = async (text: string, goal: number, authToken: string) => 
     });
 };
 
+
 export const deleteTask = async (id: number, authToken: string) => {
-    return request(`${API_URL}/tasks/${id}`, {
+    const response = await fetch(`${API_URL}/tasks/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${authToken}` },
     });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        console.error(`HTTP error! status: ${response.status}`, errorBody);
+        throw new Error(`Failed to delete task with id: ${id}`);
+    }
+
+    return;
 };
 
-export const syncTask = async (id: number, timeSpent: number, authToken: string) => {
-    const url = `${API_URL}/tasks/${id}/sync`;
-    const timeSpentInteger = Math.floor(timeSpent);
-    const body = JSON.stringify({ time_spent_today: timeSpentInteger });
 
-    return request(url, {
+export const syncTask = async (id: number, timeSpent: number, authToken: string) => {
+    return request(`${API_URL}/tasks/${id}/sync`, {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${authToken}`
         },
-        body: body,
+        body: JSON.stringify({ time_spent_today: timeSpent }),
     });
 };
 
-// Функция для перезапроса всех задач
 export const getTasks = async (authToken: string) => {
     return request(`${API_URL}/tasks/`, {
         headers: { 'Authorization': `Bearer ${authToken}` }
