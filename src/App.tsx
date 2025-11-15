@@ -30,7 +30,8 @@ export default function App() {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [authToken, setAuthToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Для начальной загрузки
+  const [isSubmitting, setIsSubmitting] = useState(false); // Для блокировки UI во время запросов
   const [error, setError] = useState<string | null>(null);
 
   // --- ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ И РАБОТА С MAX BRIDGE ---
@@ -86,7 +87,6 @@ export default function App() {
   useEffect(() => {
     if (!window.WebApp) return;
 
-    // Управляем нативной кнопкой "Назад"
     const backButton = window.WebApp.BackButton;
     const handleBackClick = () => setCurrentTab('home');
 
@@ -97,7 +97,6 @@ export default function App() {
       backButton.onClick(handleBackClick);
     }
 
-    // Управляем подтверждением закрытия при активном таймере
     const hasRunningTask = tasks.some(task => task.isRunning);
     if (hasRunningTask) {
       window.WebApp.enableClosingConfirmation();
@@ -113,10 +112,9 @@ export default function App() {
   // --- ЛОКАЛЬНАЯ ЛОГИКА ТАЙМЕРОВ ---
   useEffect(() => {
     const interval = setInterval(() => {
-      // Используем функциональную форму setTasks для безопасного обновления
       setTasks(currentTasks => {
         if (!currentTasks.some(task => task.isRunning)) {
-          return currentTasks; // Избегаем лишних перерисовок
+          return currentTasks;
         }
         return currentTasks.map(task =>
           task.isRunning
@@ -126,52 +124,62 @@ export default function App() {
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, []); // Пустой массив зависимостей - таймер работает независимо
+  }, []);
 
   // --- ФУНКЦИИ-ОБРАБОТЧИКИ ДЕЙСТВИЙ ПОЛЬЗОВАТЕЛЯ ---
 
   const handleAddTask = async (text: string) => {
-    if (!authToken) return;
+    if (!text.trim() || !authToken || isSubmitting) {
+      return;
+    }
     try {
+      setIsSubmitting(true);
       const newTaskFromServer = await api.addTask(text, 1800, authToken);
       setTasks(prevTasks => [...prevTasks, enrichTask(newTaskFromServer)]);
       window.WebApp?.HapticFeedback.notificationOccurred('success');
     } catch (error) {
       console.error("Failed to add task:", error);
       window.WebApp?.HapticFeedback.notificationOccurred('error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDeleteTask = async (id: number) => {
-    if (!authToken) return;
+    if (!authToken || isSubmitting) {
+      return;
+    }
 
-    // Используем функциональную форму для безопасного удаления из UI
+    const originalTasks = tasks;
     setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
     window.WebApp?.HapticFeedback.impactOccurred('medium');
 
     try {
+      setIsSubmitting(true);
       await api.deleteTask(id, authToken);
     } catch (error) {
       console.error("Failed to delete task:", error);
-      // Для хакатона можно опустить логику отката, но в продакшене она нужна
+      setTasks(originalTasks);
       window.WebApp?.HapticFeedback.notificationOccurred('error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleToggleTimer = async (id: number) => {
-    window.WebApp?.HapticFeedback.impactOccurred('light');
-
     const taskToToggle = tasks.find(t => t.id === id);
-    const isStopping = taskToToggle?.isRunning;
+    if (!taskToToggle) return;
 
-    // Сразу обновляем UI для отзывчивости кнопки Play/Pause
+    window.WebApp?.HapticFeedback.impactOccurred('light');
+    const isStopping = taskToToggle.isRunning;
+
     setTasks(prevTasks =>
       prevTasks.map(task =>
         task.id === id ? { ...task, isRunning: !task.isRunning } : task
       )
     );
 
-    if (isStopping && authToken && taskToToggle) {
+    if (isStopping && authToken) {
       const timeToSend = taskToToggle.timeSpent || 0;
       try {
         const updatedTaskFromServer = await api.syncTask(id, Math.floor(timeToSend), authToken);
@@ -188,7 +196,6 @@ export default function App() {
 
   const handleUpdateGoal = (id: number, minutes: number) => {
     console.log("Update goal logic to be implemented");
-    // Здесь будет вызов api.updateTaskGoal(id, minutes, authToken);
   };
 
   // --- РЕНДЕРИНГ КОМПОНЕНТА ---
