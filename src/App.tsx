@@ -5,16 +5,20 @@ import { Home } from './components/Home';
 import { Home as HomeIcon, ListTodo, User } from 'lucide-react';
 import api from './services/api';
 
+// Объявляем глобальный объект window.WebApp для TypeScript
 declare global {
   interface Window { WebApp: any; }
 }
 
+// Тип для данных пользователя, получаемых от бэкенда
 interface UserData {
   id: string;
   name: string;
   avatar: string;
 }
 
+// Вспомогательная функция для "обогащения" задач, приходящих с бэкенда.
+// Добавляет к ним локальные поля для управления UI.
 const enrichTask = (taskFromServer: any): Task => ({
   ...taskFromServer,
   timeSpent: typeof taskFromServer.time_spent_today === 'number' ? taskFromServer.time_spent_today : 0,
@@ -29,8 +33,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // --- ИНИЦИАЛИЗАЦИЯ И РАБОТА С BRIDGE ---
-
+  // --- ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ И РАБОТА С MAX BRIDGE ---
   useEffect(() => {
     const initializeApp = async () => {
       try {
@@ -42,7 +45,7 @@ export default function App() {
         setTasks(response.tasks.map(enrichTask));
         setAuthToken(response.auth_token);
 
-        // Сообщаем MAX, что UI готов к отображению
+        // Сообщаем клиенту MAX, что UI готов к отображению
         window.WebApp?.ready();
 
       } catch (err) {
@@ -53,12 +56,12 @@ export default function App() {
       }
     };
 
+    // Надежная функция, которая дожидается готовности WebApp
     const waitForWebApp = (): Promise<string> => {
       return new Promise((resolve) => {
         if (window.WebApp && window.WebApp.initData) {
           return resolve(window.WebApp.initData);
         }
-        // Если WebApp еще не готов, ждем его появления
         let attempts = 0;
         const interval = setInterval(() => {
           if (window.WebApp && window.WebApp.initData) {
@@ -66,10 +69,10 @@ export default function App() {
             resolve(window.WebApp.initData);
           } else {
             attempts++;
-            if (attempts > 20) { // Ждем макс. 2 секунды
+            if (attempts > 20) { // Ждем максимум 2 секунды
               clearInterval(interval);
               console.warn("WebApp not found after timeout. Using mock data.");
-              resolve("mock_for_browser_dev"); // Переходим в режим заглушки
+              resolve("mock_for_browser_dev");
             }
           }
         }, 100);
@@ -77,25 +80,24 @@ export default function App() {
     };
 
     initializeApp();
-  }, []);
+  }, []); // Пустой массив зависимостей = выполнить один раз при старте
 
-  // Управление нативными фичами в зависимости от состояния
+  // --- УПРАВЛЕНИЕ НАТИВНЫМИ ФУНКЦИЯМИ MAX ---
   useEffect(() => {
     if (!window.WebApp) return;
 
-    // Управляем кнопкой "Назад"
+    // Управляем нативной кнопкой "Назад"
     const backButton = window.WebApp.BackButton;
+    const handleBackClick = () => setCurrentTab('home');
+
     if (currentTab === 'home') {
       backButton.hide();
     } else {
       backButton.show();
+      backButton.onClick(handleBackClick);
     }
 
-    // Обработчик для кнопки "Назад"
-    const handleBackClick = () => setCurrentTab('home');
-    backButton.onClick(handleBackClick);
-
-    // Управляем подтверждением закрытия
+    // Управляем подтверждением закрытия при активном таймере
     const hasRunningTask = tasks.some(task => task.isRunning);
     if (hasRunningTask) {
       window.WebApp.enableClosingConfirmation();
@@ -103,37 +105,36 @@ export default function App() {
       window.WebApp.disableClosingConfirmation();
     }
 
-    // Очищаем обработчик при размонтировании
     return () => {
       backButton.offClick(handleBackClick);
     };
-
   }, [currentTab, tasks]);
 
-
-  // --- ЛОГИКА ТАЙМЕРОВ И ОБРАБОТЧИКИ ---
-
+  // --- ЛОКАЛЬНАЯ ЛОГИКА ТАЙМЕРОВ ---
   useEffect(() => {
-    const hasRunningTask = tasks.some(task => task.isRunning);
-    if (!hasRunningTask) return;
-
     const interval = setInterval(() => {
-      setTasks(prevTasks =>
-        prevTasks.map(task =>
-          task.isRunning ? { ...task, timeSpent: (task.timeSpent || 0) + 1 } : task
-        )
-      );
+      // Используем функциональную форму setTasks для безопасного обновления
+      setTasks(currentTasks => {
+        if (!currentTasks.some(task => task.isRunning)) {
+          return currentTasks; // Избегаем лишних перерисовок
+        }
+        return currentTasks.map(task =>
+          task.isRunning
+            ? { ...task, timeSpent: (task.timeSpent || 0) + 1 }
+            : task
+        );
+      });
     }, 1000);
     return () => clearInterval(interval);
-  }, [tasks]);
+  }, []); // Пустой массив зависимостей - таймер работает независимо
 
+  // --- ФУНКЦИИ-ОБРАБОТЧИКИ ДЕЙСТВИЙ ПОЛЬЗОВАТЕЛЯ ---
 
   const handleAddTask = async (text: string) => {
     if (!authToken) return;
     try {
       const newTaskFromServer = await api.addTask(text, 1800, authToken);
       setTasks(prevTasks => [...prevTasks, enrichTask(newTaskFromServer)]);
-      // Тактильный отклик об успехе
       window.WebApp?.HapticFeedback.notificationOccurred('success');
     } catch (error) {
       console.error("Failed to add task:", error);
@@ -144,32 +145,33 @@ export default function App() {
   const handleDeleteTask = async (id: number) => {
     if (!authToken) return;
 
+    // Используем функциональную форму для безопасного удаления из UI
+    setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
+    window.WebApp?.HapticFeedback.impactOccurred('medium');
+
     try {
       await api.deleteTask(id, authToken);
-      setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
-
-      window.WebApp?.HapticFeedback.impactOccurred('medium');
-
     } catch (error) {
       console.error("Failed to delete task:", error);
+      // Для хакатона можно опустить логику отката, но в продакшене она нужна
       window.WebApp?.HapticFeedback.notificationOccurred('error');
     }
   };
 
   const handleToggleTimer = async (id: number) => {
+    window.WebApp?.HapticFeedback.impactOccurred('light');
+
     const taskToToggle = tasks.find(t => t.id === id);
-    if (!taskToToggle) return;
+    const isStopping = taskToToggle?.isRunning;
 
-    window.WebApp?.HapticFeedback.impactOccurred('light'); // Вибрация при старте/стопе
-    const isStopping = taskToToggle.isRunning;
-
-    setTasks(
-      tasks.map(task =>
-        task.id === id ? { ...task, isRunning: !isStopping } : task
+    // Сразу обновляем UI для отзывчивости кнопки Play/Pause
+    setTasks(prevTasks =>
+      prevTasks.map(task =>
+        task.id === id ? { ...task, isRunning: !task.isRunning } : task
       )
     );
 
-    if (isStopping && authToken) {
+    if (isStopping && authToken && taskToToggle) {
       const timeToSend = taskToToggle.timeSpent || 0;
       try {
         const updatedTaskFromServer = await api.syncTask(id, Math.floor(timeToSend), authToken);
@@ -186,9 +188,10 @@ export default function App() {
 
   const handleUpdateGoal = (id: number, minutes: number) => {
     console.log("Update goal logic to be implemented");
+    // Здесь будет вызов api.updateTaskGoal(id, minutes, authToken);
   };
 
-  // --- РЕНДЕРИНГ ---
+  // --- РЕНДЕРИНГ КОМПОНЕНТА ---
 
   if (isLoading) {
     return <div className="min-h-screen bg-black flex items-center justify-center text-white">Загрузка...</div>;
